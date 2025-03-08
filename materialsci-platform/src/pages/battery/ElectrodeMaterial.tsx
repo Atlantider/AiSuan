@@ -19,23 +19,32 @@ const ElectrodeMaterial: React.FC = () => {
       title: '电极电位计算',
       description: '计算材料在充放电过程中的电极电位，预测电池的电压平台和能量密度',
       icon: <ThunderboltOutlined style={{ fontSize: 24, color: '#1C64F2' }} />,
+      type: 'voltage'
     },
     {
       title: '离子迁移能垒计算',
       description: '计算离子在材料中迁移的能量障碍，预测电池的功率性能',
       icon: <LineChartOutlined style={{ fontSize: 24, color: '#1C64F2' }} />,
+      type: 'barrier'
     },
     {
       title: '形成能计算',
       description: '计算材料的形成能，评估材料的热力学稳定性和合成可行性',
       icon: <BuildOutlined style={{ fontSize: 24, color: '#1C64F2' }} />,
+      type: 'formation'
     },
     {
       title: '电子结构计算',
       description: '计算材料的能带结构、态密度等电子结构特性，理解材料的电子传输性质',
       icon: <ExperimentOutlined style={{ fontSize: 24, color: '#1C64F2' }} />,
+      type: 'electronic'
     },
   ];
+
+  // 处理计算类型选择
+  const handleCalculationSelect = (calculationType: string) => {
+    navigate(`/battery/electrode-material/workbench`, { state: { calculationType } });
+  };
 
   return (
     <div>
@@ -52,7 +61,7 @@ const ElectrodeMaterial: React.FC = () => {
             icon={<ExperimentOutlined />}
             onClick={() => navigate('/battery/electrode-material/workbench')}
           >
-            进入工作台
+            进入综合计算工作台
           </Button>
           <Button 
             size="large"
@@ -68,7 +77,11 @@ const ElectrodeMaterial: React.FC = () => {
       <Row gutter={[24, 24]}>
         {calculationTypes.map((type, index) => (
           <Col xs={24} md={12} key={index}>
-            <Card hoverable>
+            <Card 
+              hoverable 
+              onClick={() => handleCalculationSelect(type.type)}
+              style={{ cursor: 'pointer' }}
+            >
               <div style={{ display: 'flex', alignItems: 'flex-start' }}>
                 <div style={{ marginRight: 16 }}>
                   {type.icon}
@@ -76,6 +89,7 @@ const ElectrodeMaterial: React.FC = () => {
                 <div>
                   <Title level={4}>{type.title}</Title>
                   <Paragraph>{type.description}</Paragraph>
+                  <Button type="link" style={{ padding: 0 }}>开始计算 &gt;</Button>
                 </div>
               </div>
             </Card>
@@ -120,7 +134,7 @@ const ElectrodeMaterial: React.FC = () => {
           size="large" 
           onClick={() => navigate('/battery/electrode-material/workbench')}
         >
-          开始计算
+          进入综合计算工作台
         </Button>
       </div>
     </div>
