@@ -1,0 +1,14 @@
+# 默认路径配置
+paths:
+  file_generate: "/home/iei/share/wangyh/molyte_v1/file_wyh/"
+  initial_salts: "/home/iei/share/wangyh/molyte_v1/inital_salts/"
+  ligpargen: "/home/iei/.conda/envs/py37/bin/"
+  packmol: "/home/iei/software/packmol/packmol"
+  lempyfy: "/home/iei/software/moltemplate/moltemplate/ltemplify.py"
+  moltemplate: "/home/iei/software/moltemplate/moltemplate/scripts/moltemplate.sh"
+  resp: "/home/iei/share/wangyh/molyte_v1/RESP/"
+  charge_save: "/home/iei/share/wangyh/molyte_v1/charge/"
+  
+files:
+  existing_molecules: "existing_molecules.json"
+  input_xlsx: "../inputList/inputList_YH3.xlsx" 

@@ -1,0 +1,18 @@
+# 默认模拟参数配置
+simulation:
+  npt:
+    steps: 5000000
+    temperature: 300
+    freq_trj: 10000
+  nvt:
+    steps: 15000000
+    temperature: 300
+    freq_trj: 50000
+  general:
+    thermo_freq: 10000
+    timestep: 1
+  minimization:
+    etol: 1.0e-4
+    ftol: 1.0e-6
+    maxiter: 5000
+    maxeval: 10000 

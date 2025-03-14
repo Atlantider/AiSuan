@@ -1,0 +1,2799 @@
+From 0d4abd1b00c09ff24501836c7b8506b1fc0265a4 Mon Sep 17 00:00:00 2001
+From: Atlantider <est2011xj@gmail.com>
+Date: Thu, 6 Mar 2025 07:26:39 +0800
+Subject: [PATCH] =?UTF-8?q?=E6=B7=BB=E5=8A=A0=E7=94=B5=E5=8C=96=E5=AD=A6?=
+ =?UTF-8?q?=E6=80=A7=E8=83=BD=E5=88=86=E6=9E=90=E5=8A=9F=E8=83=BD:=201.=20?=
+ =?UTF-8?q?=E5=AE=9E=E7=8E=B0=E7=A6=BB=E5=AD=90=E7=94=B5=E5=AF=BC=E7=8E=87?=
+ =?UTF-8?q?=E8=AE=A1=E7=AE=97=202.=20=E6=B7=BB=E5=8A=A0=E4=BB=8B=E7=94=B5?=
+ =?UTF-8?q?=E5=B8=B8=E6=95=B0=E8=AE=A1=E7=AE=97=E5=87=BD=E6=95=B0=203.=20?=
+ =?UTF-8?q?=E6=96=B0=E5=A2=9E=E7=B2=98=E5=BA=A6=E5=92=8C=E8=BF=81=E7=A7=BB?=
+ =?UTF-8?q?=E6=95=B0=E5=88=86=E6=9E=90=204.=20=E4=BC=98=E5=8C=96=E5=8F=AF?=
+ =?UTF-8?q?=E8=A7=86=E5=8C=96=E7=BB=84=E4=BB=B6=205.=20=E5=AE=8C=E5=96=84?=
+ =?UTF-8?q?=E6=96=87=E6=A1=A3?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ molyte_cursor/src/analysis/README.md          |  307 ++++-
+ molyte_cursor/src/analysis/analyzer.py        |  318 ++++-
+ molyte_cursor/src/analysis/calc_properties.py |  238 ++++
+ molyte_cursor/src/analysis/msd_analyzer.py    |  158 +++
+ .../src/analysis/solvent_analyzer.py          | 1140 +++++++++++------
+ molyte_cursor/src/analysis/visualization.py   |  407 ++++++
+ 6 files changed, 2197 insertions(+), 371 deletions(-)
+
+diff --git a/molyte_cursor/src/analysis/README.md b/molyte_cursor/src/analysis/README.md
+index 2a9076b..379889f 100644
+--- a/molyte_cursor/src/analysis/README.md
++++ b/molyte_cursor/src/analysis/README.md
+@@ -186,4 +186,309 @@ visualizer.plot_solvent_distribution(
+ 3. 处理后的数据文件（DAT、TXT格式）
+ 4. 表格数据（XLSX格式）
+ 
+-每个样品的分析结果将保存在以样品名称命名的子目录中，便于查找和管理。 
+\ No newline at end of file
++每个样品的分析结果将保存在以样品名称命名的子目录中，便于查找和管理。
++
++## 电化学性能分析
++
++电化学性能分析功能可以基于MSD数据计算离子电导率、迁移数和粘度等电化学参数，为研究电解液性能提供重要参考。
++
++### 单样品电化学分析
++
++以下示例展示了如何对单个样品进行电化学性能分析：
++
++```python
++from molyte_cursor.src.analysis import Analyzer
++
++# 初始化分析器
++analyzer = Analyzer(
++    base_dir="/path/to/data_directory",
++    output_dir="/path/to/output_directory"
++)
++
++# 运行电化学性能分析
++# 注意：这需要先运行MSD分析以获取必要的MSD数据
++results = analyzer.run_electrochemical_analysis(
++    sample_name="LiTFSI-EC",
++    temperature=298.15,  # 温度 (K)
++    concentration=1.0,   # 电解质浓度 (mol/L)
++    cation_valence=1,    # 阳离子价数 (Li+ = 1)
++    anion_valence=1,     # 阴离子价数 (TFSI- = 1)
++    particle_radius=2.0  # 粒子半径 (Å)，用于估算粘度
++)
++
++# 结果包含以下参数：
++# - conductivity_mS_cm: 电导率 (mS/cm)
++# - molar_conductivity: 摩尔电导率 (S·m²/mol)
++# - transference_number: 阳离子迁移数
++# - viscosity_mPa_s: 粘度 (mPa·s)
++# - diffusion_coeffs: 各组分扩散系数 (10⁻⁹ m²/s)
++```
++
++### 多样品对比分析
++
++以下示例展示了如何对多个样品的电化学性能进行对比分析：
++
++```python
++from molyte_cursor.src.analysis import Analyzer
++
++# 初始化分析器
++analyzer = Analyzer(
++    base_dir="/path/to/data_directory",
++    output_dir="/path/to/output_directory"
++)
++
++# 运行多样品对比分析
++results = analyzer.run_comparative_electrochemical_analysis(
++    sample_names=["LiTFSI-EC", "LiTFSI-DMC", "LiTFSI-EC-DMC"],
++    output_name="lithium_electrolytes_comparison",
++    temperature=298.15,  # 温度 (K)
++    concentrations=[1.0, 1.0, 1.0],  # 各样品的电解质浓度 (mol/L)
++    cation_valence=1,    # 阳离子价数
++    anion_valence=1      # 阴离子价数
++)
++
++# 结果将保存为Excel文件，并生成各项电化学参数的对比图表
++```
++
++### 批量分析
++
++以下示例展示了如何在批量分析中包含电化学性能分析：
++
++```python
++from molyte_cursor.src.analysis import Analyzer
++
++# 初始化分析器
++analyzer = Analyzer(
++    base_dir="/path/to/data_directory",
++    output_dir="/path/to/output_directory"
++)
++
++# 批量运行多种分析，包括电化学分析
++results = analyzer.run_batch_analysis(
++    sample_names=["LiTFSI-EC", "LiTFSI-DMC", "LiTFSI-EC-DMC"],
++    analysis_types=["msd", "electrochemical"]  # 先运行MSD分析，再进行电化学分析
++)
++```
++
++### 主要电化学参数说明
++
++1. **离子电导率**：表示电解液导电能力的关键参数，单位为mS/cm。通过Nernst-Einstein方程从离子扩散系数计算得到。
++
++2. **摩尔电导率**：考虑了浓度因素的电导率标准化值，单位为S·m²/mol。摩尔电导率与浓度的关系可用于研究离子聚集现象。
++
++3. **阳离子迁移数**：表示电流中由阳离子迁移贡献的比例，范围为0-1。理想的锂离子电池电解液应有接近0.5或更高的锂离子迁移数。
++
++4. **粘度**：表示流体阻力的物理量，单位为mPa·s。粘度与扩散系数成反比，通过Stokes-Einstein关系从扩散系数估算。 
++
++## 高级电化学计算函数
++
++除了通过主分析器使用电化学分析功能外，您还可以单独使用各种电化学性能计算函数：
++
++### 电导率计算
++
++```python
++from molyte_cursor.src.analysis.calc_properties import calculate_ionic_conductivity
++
++# 从MSD数据计算离子电导率
++conductivity = calculate_ionic_conductivity(
++    msd_file="path/to/out_msd.dat",          # MSD数据文件路径
++    temperature=298.15,                       # 温度 (K)
++    time_unit='fs',                           # 时间单位
++    concentration=1.0,                        # 浓度 (mol/L)
++    cation_valence=1,                         # 阳离子价数
++    anion_valence=1,                          # 阴离子价数
++    skip_initial=10                           # 忽略初始数据点数量
++)
++
++# 返回值单位为S/m，可转换为mS/cm（乘以10）
++```
++
++### 介电常数计算
++
++```python
++from molyte_cursor.src.analysis.calc_properties import calculate_dielectric_constant
++
++# 计算介电常数
++dielectric = calculate_dielectric_constant(
++    dipole_file="path/to/dipole.dat",         # 偶极矩数据文件路径
++    temperature=298.15,                       # 温度 (K)
++    volume=1000.0,                            # 系统体积 (Å³)
++    dipole_unit='e*A'                         # 偶极矩单位
++)
++```
++
++### 迁移数计算
++
++```python
++from molyte_cursor.src.analysis.calc_properties import calculate_transference_number
++
++# 计算阳离子迁移数
++t_plus = calculate_transference_number(
++    cation_diffusion=1.2e-9,                  # 阳离子扩散系数 (m²/s)
++    anion_diffusion=0.8e-9,                   # 阴离子扩散系数 (m²/s)
++    cation_valence=1,                         # 阳离子价数
++    anion_valence=1                           # 阴离子价数
++)
++```
++
++### 哈文比（Haven Ratio）计算
++
++```python
++from molyte_cursor.src.analysis.calc_properties import calculate_haven_ratio
++
++# 计算哈文比（离子关联度）
++HR = calculate_haven_ratio(
++    conductivity_md=0.5,                      # MD模拟计算的电导率
++    conductivity_ne=0.8                       # 根据Nernst-Einstein方程计算的电导率
++)
++```
++
++### 扩散激活能计算
++
++```python
++from molyte_cursor.src.analysis.calc_properties import calculate_diffusion_activation_energy
++
++# 计算扩散激活能
++Ea, A = calculate_diffusion_activation_energy(
++    diffusion_coeffs=[1.0e-9, 1.5e-9, 2.5e-9],    # 不同温度下的扩散系数列表
++    temperatures=[273.15, 298.15, 323.15]         # 对应的温度列表 (K)
++)
++# Ea为激活能（kJ/mol），A为指前因子
++```
++
++### 粘度计算
++
++```python
++from molyte_cursor.src.analysis.calc_properties import calculate_viscosity
++
++# 从扩散系数估算粘度
++viscosity = calculate_viscosity(
++    diffusion_coeff=1.2e-9,                   # 扩散系数 (m²/s)
++    particle_radius=2.0,                      # 粒子半径 (Å)
++    temperature=298.15                        # 温度 (K)
++)
++# 返回值单位为Pa·s，可转换为mPa·s（乘以1000）
++```
++
++## 电化学数据可视化
++
++我们提供了一系列函数用于可视化电化学分析结果，可以通过Visualizer类直接调用：
++
++```python
++from molyte_cursor.src.analysis import Visualizer
++
++visualizer = Visualizer(output_dir='/path/to/output')
++
++# 绘制单个样品的电导率数据
++conductivity_plot = visualizer.plot_conductivity_data(
++    electrochemical_data={
++        'sample_name': 'LiTFSI-EC',
++        'conductivity_mS_cm': 5.43,
++        'molar_conductivity': 0.00543,
++        'concentration': 1.0
++    },
++    output_filename='conductivity_plot.png'
++)
++
++# 绘制单个样品的粘度数据
++viscosity_plot = visualizer.plot_viscosity_data(
++    electrochemical_data={
++        'sample_name': 'LiTFSI-EC',
++        'viscosity_mPa_s': 3.21,
++        'diffusion_coeffs': {'D_total': 1.25}
++    },
++    output_filename='viscosity_plot.png'
++)
++
++# 绘制多个样品的电导率比较图
++comparative_plot = visualizer.plot_comparative_conductivity(
++    electrochemical_data={
++        'LiTFSI-EC': {
++            'conductivity_mS_cm': 5.43,
++            'molar_conductivity': 0.00543
++        },
++        'LiTFSI-DMC': {
++            'conductivity_mS_cm': 7.65,
++            'molar_conductivity': 0.00765
++        }
++    },
++    output_filename='comparative_conductivity.png'
++)
++
++# 绘制多个样品的粘度比较图
++viscosity_plot = visualizer.plot_comparative_viscosity(
++    electrochemical_data={
++        'LiTFSI-EC': {
++            'viscosity_mPa_s': 3.21,
++            'diffusion_coefficients': {'D_total': 1.25}
++        },
++        'LiTFSI-DMC': {
++            'viscosity_mPa_s': 2.14,
++            'diffusion_coefficients': {'D_total': 1.87}
++        }
++    },
++    output_filename='comparative_viscosity.png'
++)
++
++# 绘制多个样品的迁移数比较图
++transference_plot = visualizer.plot_comparative_transference(
++    electrochemical_data={
++        'LiTFSI-EC': {'transference_number': 0.35},
++        'LiTFSI-DMC': {'transference_number': 0.42},
++        'LiTFSI-EC-DMC': {'transference_number': 0.38}
++    },
++    output_filename='comparative_transference.png'
++)
++```
++
++## 电化学分析输出数据格式
++
++电化学分析完成后，会生成多种格式的输出文件：
++
++### JSON结果文件
++
++包含完整分析结果的JSON文件，包含以下主要键值：
++
++```json
++{
++  "sample_name": "样品名称",
++  "temperature": 298.15,
++  "concentration": 1.0,
++  "diffusion_coeffs": {
++    "D_total": 1.25,
++    "D_cation": 1.0,
++    "D_anion": 0.8,
++    "D_solvent": 1.5,
++    "D_x": 1.2,
++    "D_y": 1.3,
++    "D_z": 1.25
++  },
++  "conductivity": 0.543,
++  "conductivity_mS_cm": 5.43,
++  "molar_conductivity": 0.00543,
++  "transference_number": 0.35,
++  "viscosity": 0.00321,
++  "viscosity_mPa_s": 3.21,
++  "plots": {
++    "conductivity_plot": "path/to/conductivity_plot.png",
++    "viscosity_plot": "path/to/viscosity_plot.png"
++  }
++}
++```
++
++### Excel结果文件
++
++比较分析会生成Excel文件，包含以下工作表：
++
++1. **比较结果**: 包含多个样品的对比数据表格
++2. **图表列表**: 生成的图表文件路径
++
++### 图像文件
++
++生成的图像包括：
++
++1. **电导率图**: 显示电导率和摩尔电导率
++2. **粘度图**: 显示粘度和总扩散系数
++3. **迁移数图**: 显示阳离子迁移数
++
++所有图像均为高分辨率PNG格式，默认DPI为300。 
+\ No newline at end of file
+diff --git a/molyte_cursor/src/analysis/analyzer.py b/molyte_cursor/src/analysis/analyzer.py
+index 04f3258..e8de678 100644
+--- a/molyte_cursor/src/analysis/analyzer.py
++++ b/molyte_cursor/src/analysis/analyzer.py
+@@ -256,6 +256,226 @@ class Analyzer:
+         self.logger.info(f"比较性MSD分析完成")
+         return results
+     
++    def run_electrochemical_analysis(self, sample_name: str, temperature: float, concentration: float,
++                                   cation_valence: int = 1, anion_valence: int = 1,
++                                   particle_radius: float = 2.0) -> Dict[str, Any]:
++        """
++        运行电化学性能分析，包括离子电导率、迁移数和粘度分析。
++
++        Args:
++            sample_name: 样品名称
++            temperature: 温度 (K)
++            concentration: 电解质浓度 (mol/L)
++            cation_valence: 阳离子价数
++            anion_valence: 阴离子价数
++            particle_radius: 粒子半径 (Å) 用于估算粘度
++
++        Returns:
++            结果字典，包含电导率、迁移数、粘度等信息
++        """
++        self.logger.info(f"运行电化学性能分析: 样品名称={sample_name}, 温度={temperature}K")
++        
++        # 创建输出目录
++        output_dir = os.path.join(self.output_dir, sample_name, "electrochemical_analysis")
++        os.makedirs(output_dir, exist_ok=True)
++        
++        # 处理电化学数据
++        msd_output_path = os.path.join(self.output_dir, sample_name, "msd_analysis", "out_msd.dat")
++        if not os.path.exists(msd_output_path):
++            self.logger.warning(f"未找到MSD数据文件: {msd_output_path}")
++            self.logger.warning("请先运行MSD分析以生成所需的数据文件")
++            return {"error": "未找到MSD数据文件"}
++        
++        # 处理MSD数据并计算扩散系数、电导率等
++        electrochemical_results = self.msd_analyzer.process_electrochemical_data(
++            sample_name=sample_name,
++            msd_file=msd_output_path,
++            output_dir=output_dir,
++            temperature=temperature,
++            concentration=concentration,
++            cation_valence=cation_valence,
++            anion_valence=anion_valence,
++            particle_radius=particle_radius
++        )
++        
++        # 生成电导率图表
++        conductivity_plot_path = self.visualizer.plot_conductivity_data(
++            electrochemical_data=electrochemical_results,
++            output_filename=f"{sample_name}_conductivity.png"
++        )
++        
++        # 生成粘度图表
++        viscosity_plot_path = self.visualizer.plot_viscosity_data(
++            electrochemical_data=electrochemical_results,
++            output_filename=f"{sample_name}_viscosity.png"
++        )
++        
++        # 将图表路径添加到结果中
++        electrochemical_results["plots"] = {
++            "conductivity_plot": conductivity_plot_path,
++            "viscosity_plot": viscosity_plot_path
++        }
++        
++        # 将结果保存为JSON
++        results_json_path = os.path.join(output_dir, f"{sample_name}_electrochemical_results.json")
++        with open(results_json_path, 'w') as f:
++            json.dump(electrochemical_results, f, indent=4)
++        
++        self.logger.info(f"电化学性能分析完成: {sample_name}")
++        self.logger.info(f"结果已保存到: {results_json_path}")
++        
++        # 返回结果和路径
++        return {
++            **electrochemical_results,
++            "output_dir": output_dir,
++            "results_json": results_json_path
++        }
++    
++    def run_comparative_electrochemical_analysis(self, sample_names: List[str], output_name: str,
++                                                   temperature: float, concentrations: Union[float, List[float]] = None,
++                                                   cation_valence: int = 1, anion_valence: int = 1) -> Dict[str, Any]:
++        """
++        运行比较性电化学性能分析，对多个样品进行比较。
++
++        Args:
++            sample_names: 要比较的样品名称列表
++            output_name: 输出文件名称前缀
++            temperature: 温度 (K)
++            concentrations: 电解质浓度 (mol/L)，可以是单一值或列表（与样品一一对应）
++            cation_valence: 阳离子价数
++            anion_valence: 阴离子价数
++
++        Returns:
++            结果字典，包含比较分析结果和图表路径
++        """
++        self.logger.info(f"运行比较性电化学性能分析: 样品={sample_names}, 温度={temperature}K")
++        
++        # 创建输出目录
++        output_dir = os.path.join(self.output_dir, "comparative_analysis", output_name)
++        os.makedirs(output_dir, exist_ok=True)
++        
++        # 处理浓度参数
++        if concentrations is None:
++            concentrations = [1.0] * len(sample_names)
++        elif isinstance(concentrations, (int, float)):
++            concentrations = [float(concentrations)] * len(sample_names)
++        
++        if len(concentrations) != len(sample_names):
++            self.logger.warning(f"浓度列表长度 ({len(concentrations)}) 与样品数量 ({len(sample_names)}) 不匹配，使用默认值1.0")
++            concentrations = [1.0] * len(sample_names)
++        
++        # 收集每个样品的电化学数据
++        results = {}
++        all_electrochemical_data = {}
++        
++        for i, sample_name in enumerate(sample_names):
++            concentration = concentrations[i]
++            
++            self.logger.info(f"处理样品 {sample_name} (浓度: {concentration} mol/L)")
++            
++            # 运行单个样品的电化学分析
++            sample_results = self.run_electrochemical_analysis(
++                sample_name=sample_name,
++                temperature=temperature,
++                concentration=concentration,
++                cation_valence=cation_valence,
++                anion_valence=anion_valence
++            )
++            
++            # 如果分析成功，收集结果
++            if "error" not in sample_results:
++                results[sample_name] = sample_results
++                all_electrochemical_data[sample_name] = {
++                    "sample_name": sample_name,
++                    "concentration": concentration,
++                    "conductivity_mS_cm": sample_results.get("conductivity_mS_cm", 0),
++                    "molar_conductivity": sample_results.get("molar_conductivity", 0),
++                    "transference_number": sample_results.get("transference_number", 0),
++                    "viscosity_mPa_s": sample_results.get("viscosity_mPa_s", 0),
++                    "diffusion_coefficients": sample_results.get("diffusion_coeffs", {})
++                }
++            else:
++                self.logger.warning(f"样品 {sample_name} 分析失败: {sample_results.get('error')}")
++        
++        # 如果没有成功分析任何样品，返回错误
++        if not results:
++            self.logger.error("没有成功分析任何样品")
++            return {"error": "没有成功分析任何样品"}
++        
++        # 生成比较图表
++        plots = {}
++        
++        # 电导率比较图表
++        conductivity_plot_path = self.visualizer.plot_comparative_conductivity(
++            electrochemical_data=all_electrochemical_data,
++            output_filename=f"{output_name}_comparative_conductivity.png"
++        )
++        plots["comparative_conductivity"] = conductivity_plot_path
++        
++        # 粘度比较图表
++        viscosity_plot_path = self.visualizer.plot_comparative_viscosity(
++            electrochemical_data=all_electrochemical_data,
++            output_filename=f"{output_name}_comparative_viscosity.png"
++        )
++        plots["comparative_viscosity"] = viscosity_plot_path
++        
++        # 离子迁移数比较图表
++        transference_plot_path = self.visualizer.plot_comparative_transference(
++            electrochemical_data=all_electrochemical_data,
++            output_filename=f"{output_name}_comparative_transference.png"
++        )
++        plots["comparative_transference"] = transference_plot_path
++        
++        # 创建Excel文件汇总结果
++        excel_path = os.path.join(output_dir, f"{output_name}_comparative_results.xlsx")
++        
++        try:
++            # 创建DataFrame
++            data = []
++            for sample, result in all_electrochemical_data.items():
++                row = {
++                    "样品名称": sample,
++                    "浓度 (mol/L)": result.get("concentration", 0),
++                    "电导率 (mS/cm)": result.get("conductivity_mS_cm", 0),
++                    "摩尔电导率 (S·m²/mol)": result.get("molar_conductivity", 0),
++                    "阳离子迁移数": result.get("transference_number", 0),
++                    "粘度 (mPa·s)": result.get("viscosity_mPa_s", 0),
++                    "总扩散系数 (10⁻⁹ m²/s)": result.get("diffusion_coefficients", {}).get("D_total", 0),
++                    "阳离子扩散系数 (10⁻⁹ m²/s)": result.get("diffusion_coefficients", {}).get("D_cation", 0),
++                    "阴离子扩散系数 (10⁻⁹ m²/s)": result.get("diffusion_coefficients", {}).get("D_anion", 0),
++                    "溶剂扩散系数 (10⁻⁹ m²/s)": result.get("diffusion_coefficients", {}).get("D_solvent", 0)
++                }
++                data.append(row)
++            
++            df = pd.DataFrame(data)
++            
++            # 将结果写入Excel文件
++            with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
++                df.to_excel(writer, sheet_name='比较结果', index=False)
++                
++                # 添加图表描述页
++                plot_desc = pd.DataFrame({
++                    "图表名称": list(plots.keys()),
++                    "图表路径": list(plots.values())
++                })
++                plot_desc.to_excel(writer, sheet_name='图表列表', index=False)
++            
++            self.logger.info(f"比较结果已保存到Excel文件: {excel_path}")
++            
++        except Exception as e:
++            self.logger.error(f"创建Excel结果文件时出错: {e}")
++        
++        # 返回结果和路径
++        comparative_results = {
++            "samples": sample_names,
++            "sample_results": results,
++            "plots": plots,
++            "excel_file": excel_path,
++            "output_dir": output_dir
++        }
++        
++        return comparative_results
++    
+     def run_gaussian_analysis(self, directory: str, output_name: str = 'gaussian_analysis') -> Dict[str, Any]:
+         """
+         运行高斯计算分析
+@@ -340,7 +560,9 @@ class Analyzer:
+                            cation_atom_types: Optional[List[int]] = None,
+                            anion_atom_types: Optional[List[int]] = None,
+                            solvent_atom_types: Optional[List[int]] = None,
+-                           cutoff_distance: float = 5.0) -> Dict[str, Any]:
++                           cutoff_distance: float = 5.0,
++                           cip_distance: float = 4.0,
++                           ssip_distance: float = 7.0) -> Dict[str, Any]:
+         """
+         运行溶剂分析
+ 
+@@ -352,6 +574,8 @@ class Analyzer:
+             anion_atom_types: 阴离子中代表性原子的类型列表
+             solvent_atom_types: 溶剂中代表性原子的类型列表
+             cutoff_distance: 溶剂化层的截止距离（埃）
++            cip_distance: CIP的最大距离阈值（埃）
++            ssip_distance: SSIP的最大距离阈值（埃）
+ 
+         Returns:
+             包含分析结果的字典
+@@ -395,11 +619,18 @@ class Analyzer:
+         
+         # 运行溶剂分布分析
+         solvent_results = self.solvent_analyzer.analyze_solvent_distribution(
+-            dump_file, atom_counts, cation_atom_types, anion_atom_types, solvent_atom_types, cutoff_distance
++            dump_file, 
++            atom_counts=atom_counts,
++            cation_atom_types=cation_atom_types,
++            anion_atom_types=anion_atom_types,
++            solvent_atom_types=solvent_atom_types,
++            cutoff_distance=cutoff_distance,
++            cip_distance=cip_distance,
++            ssip_distance=ssip_distance
+         )
+         
+         if not solvent_results:
+-            self.logger.error(f"溶剂分布分析失败")
++            self.logger.error("溶剂分布分析失败")
+             return {'error': 'Solvent distribution analysis failed'}
+         
+         # 生成溶剂分布图
+@@ -421,6 +652,12 @@ class Analyzer:
+             plot_type='heatmap'
+         )
+         
++        # 生成离子对分析图表
++        ion_pair_img = self.visualizer.plot_ion_pair_analysis(
++            solvent_results, 
++            f"ion_pair_analysis_{sample_name}.png"
++        )
++        
+         # 将平均溶剂化数据导出为Excel
+         avg_solvation_data = []
+         for cation_id, solvents in solvent_results['avg_cation_solvation'].items():
+@@ -428,15 +665,55 @@ class Analyzer:
+             row.update(solvents)
+             avg_solvation_data.append(row)
+         
+-        if avg_solvation_data:
+-            df = pd.DataFrame(avg_solvation_data)
+-            excel_path = os.path.join(output_sample_dir, f'solvent_distribution_{sample_name}.xlsx')
+-            df.to_excel(excel_path, index=False)
++        # 获取离子对分析结果
++        ion_pair_analysis = solvent_results.get('ion_pair_analysis', {})
++        
++        # 创建Excel文件
++        excel_path = os.path.join(output_sample_dir, f'solvent_distribution_{sample_name}.xlsx')
++        
++        with pd.ExcelWriter(excel_path) as writer:
++            # 溶剂化数据表
++            if avg_solvation_data:
++                df_solvation = pd.DataFrame(avg_solvation_data)
++                df_solvation.to_excel(writer, sheet_name='溶剂化数据', index=False)
++            
++            # 离子对分析表
++            ion_pair_data = {
++                '类型': ['CIP (接触离子对)', 'SSIP (溶剂分离离子对)', 'AGG (聚集体)', '自由阳离子'],
++                '数量': [
++                    solvent_results.get('cip_count', 0),
++                    solvent_results.get('ssip_count', 0),
++                    solvent_results.get('agg_count', 0),
++                    solvent_results.get('free_cation_count', 0)
++                ],
++                '百分比': [
++                    solvent_results.get('cip_percentage', 0),
++                    solvent_results.get('ssip_percentage', 0),
++                    solvent_results.get('agg_percentage', 0),
++                    solvent_results.get('free_cation_percentage', 0)
++                ]
++            }
++            
++            df_ion_pairs = pd.DataFrame(ion_pair_data)
++            df_ion_pairs.to_excel(writer, sheet_name='离子对分析', index=False)
++        
++            # 溶剂化分布表
++            solvation_dist = solvent_results.get('solvation_distribution', {})
++            if solvation_dist:
++                solvation_dist_data = {
++                    '溶剂化数': list(solvation_dist.keys()),
++                    '阳离子数': list(solvation_dist.values())
++                }
++                df_solvation_dist = pd.DataFrame(solvation_dist_data)
++                df_solvation_dist = df_solvation_dist.sort_values('溶剂化数')
++                df_solvation_dist.to_excel(writer, sheet_name='溶剂化分布', index=False)
+         
+         results = {
+             'sample_name': sample_name,
+             'dump_file': dump_file,
+             'cutoff_distance': cutoff_distance,
++            'cip_distance': cip_distance,
++            'ssip_distance': ssip_distance,
+             'cation_atom_types': cation_atom_types,
+             'anion_atom_types': anion_atom_types,
+             'solvent_atom_types': solvent_atom_types,
+@@ -444,10 +721,15 @@ class Analyzer:
+             'cation_count': solvent_results.get('cation_count', 0),
+             'anion_count': solvent_results.get('anion_count', 0),
+             'solvent_count': solvent_results.get('solvent_count', 0),
++            'cip_count': solvent_results.get('cip_count', 0),
++            'ssip_count': solvent_results.get('ssip_count', 0),
++            'agg_count': solvent_results.get('agg_count', 0),
++            'free_cation_count': solvent_results.get('free_cation_count', 0),
+             'bar_chart': bar_img,
+             'pie_chart': pie_img,
+             'heatmap': heatmap_img,
+-            'excel_file': excel_path if avg_solvation_data else None
++            'ion_pair_chart': ion_pair_img,
++            'excel_file': excel_path
+         }
+         
+         # 保存结果到JSON文件
+@@ -538,7 +820,7 @@ class Analyzer:
+         
+         # 默认运行所有类型的分析
+         if analysis_types is None:
+-            analysis_types = ['rdf', 'msd', 'solvent', 'comprehensive']
++            analysis_types = ['rdf', 'msd', 'solvent', 'comprehensive', 'electrochemical']
+         
+         results = defaultdict(dict)
+         
+@@ -554,12 +836,28 @@ class Analyzer:
+                     results['solvent'][sample_name] = self.run_solvent_analysis(sample_name)
+                 elif analysis_type == 'comprehensive':
+                     results['comprehensive'][sample_name] = self.run_comprehensive_analysis(sample_name)
++                elif analysis_type == 'electrochemical':
++                    # 对于电化学分析，我们需要额外的参数，这里使用默认值
++                    results['electrochemical'][sample_name] = self.run_electrochemical_analysis(
++                        sample_name=sample_name,
++                        temperature=298.15,  # 室温 (K)
++                        concentration=1.0    # 默认浓度 (mol/L)
++                    )
+                 else:
+                     self.logger.warning(f"未知的分析类型: {analysis_type}")
+         
+         # 如果有多个样品的MSD分析，添加比较分析
+         if 'msd' in results and len(results['msd']) > 1:
+-            results['comparative'] = self.run_comparative_msd_analysis(sample_names)
++            results['comparative_msd'] = self.run_comparative_msd_analysis(sample_names)
++            
++        # 如果有多个样品的电化学分析，添加比较分析
++        if 'electrochemical' in results and len(results['electrochemical']) > 1:
++            results['comparative_electrochemical'] = self.run_comparative_electrochemical_analysis(
++                sample_names=sample_names,
++                output_name="comparative_electrochemical",
++                temperature=298.15,  # 室温 (K)
++                concentrations=1.0   # 默认浓度 (mol/L)
++            )
+         
+         # 保存批处理结果摘要
+         summary = {
+diff --git a/molyte_cursor/src/analysis/calc_properties.py b/molyte_cursor/src/analysis/calc_properties.py
+index 4573771..4eeab30 100644
+--- a/molyte_cursor/src/analysis/calc_properties.py
++++ b/molyte_cursor/src/analysis/calc_properties.py
+@@ -6,6 +6,9 @@ import argparse
+ import sys
+ import os
+ from pathlib import Path
++import numpy as np
++from scipy import stats
++import pandas as pd
+ 
+ # 添加父目录到sys.path，使模块导入正常工作
+ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+@@ -13,6 +16,241 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+ from molyte_cursor.src.analysis.gaussian_processor import GaussianProcessor
+ from molyte_cursor.src.utils.logger import Logger
+ 
++# 物理常数
++KB = 1.38064852e-23  # 玻尔兹曼常数 (J/K)
++E_CHARGE = 1.60217662e-19  # 电子电荷 (C)
++EPSILON_0 = 8.85418782e-12  # 真空介电常数 (F/m)
++NA = 6.022e23  # 阿伏伽德罗常数 (mol^-1)
++PI = np.pi  # 圆周率
++
++def calculate_ionic_conductivity(msd_file: str, temperature: float = 298.15, 
++                                time_unit: str = 'fs', concentration: float = 1.0,
++                                cation_valence: int = 1, anion_valence: int = 1,
++                                skip_initial: int = 10) -> float:
++    """
++    使用Nernst-Einstein方程计算离子电导率
++    
++    电导率 σ = (e^2 * N_A * C / kB / T) * (z_+^2 * D_+ + z_-^2 * D_-)
++    
++    Args:
++        msd_file: MSD数据文件路径
++        temperature: 温度 (K)
++        time_unit: 时间单位，可选 'fs', 'ps', 'ns'
++        concentration: 电解质浓度 (mol/L)
++        cation_valence: 阳离子价数
++        anion_valence: 阴离子价数
++        skip_initial: 跳过的初始数据点数
++        
++    Returns:
++        离子电导率 (S/m)
++    """
++    # 读取MSD数据
++    with open(msd_file, 'r') as f:
++        line1 = ''
++        current_msd = []
++
++        # 读取前3行注释
++        for i in range(0, 3):
++            if i == 0:
++                line1 = f.readline()
++            else:
++                f.readline()
++
++        # 初始化数据数组
++        for idx, _ in enumerate(line1.split()):
++            current_msd.append([])
++
++        # 读取数据
++        for line in f.readlines():
++            for idx, value in enumerate(line.split()):
++                current_msd[idx].append(float(value))
++    
++    # 转换时间单位为秒
++    time_factor = 1.0
++    if time_unit == 'fs':
++        time_factor = 1e-15
++    elif time_unit == 'ps':
++        time_factor = 1e-12
++    elif time_unit == 'ns':
++        time_factor = 1e-9
++    
++    # 跳过初始数据点
++    times = np.array(current_msd[0][skip_initial:]) * time_factor
++    msd_cation = np.array(current_msd[4][skip_initial:]) if len(current_msd) > 4 else None
++    msd_anion = np.array(current_msd[4][skip_initial:]) if len(current_msd) > 4 else None
++    
++    # 线性拟合计算扩散系数
++    if msd_cation is not None:
++        slope_cation, _ = np.polyfit(times, msd_cation, 1)
++        d_cation = slope_cation / 6  # 扩散系数 (m^2/s)
++    else:
++        # 如果没有分别的阳离子数据，使用总体MSD
++        msd_total = np.array(current_msd[4][skip_initial:])
++        slope_total, _ = np.polyfit(times, msd_total, 1)
++        d_cation = slope_total / 6  # 估计值
++    
++    if msd_anion is not None:
++        slope_anion, _ = np.polyfit(times, msd_anion, 1)
++        d_anion = slope_anion / 6  # 扩散系数 (m^2/s)
++    else:
++        # 如果没有分别的阴离子数据，使用总体MSD或与阳离子相同
++        d_anion = d_cation
++    
++    # 转换浓度从mol/L到mol/m^3
++    concentration_mol_m3 = concentration * 1000  # 1000 L/m^3
++    
++    # 计算电导率 (S/m)
++    conductivity = (E_CHARGE**2 * NA * concentration_mol_m3 / (KB * temperature)) * \
++                  (cation_valence**2 * d_cation + anion_valence**2 * d_anion)
++    
++    return conductivity
++
++def calculate_dielectric_constant(dipole_file: str, temperature: float = 298.15, 
++                                volume: float = 1.0, dipole_unit: str = 'e*A') -> float:
++    """
++    使用系统偶极矩涨落计算介电常数
++    
++    介电常数 ε = 1 + <M^2>/(3*ε_0*V*k_B*T)
++    
++    Args:
++        dipole_file: 偶极矩数据文件路径
++        temperature: 温度 (K)
++        volume: 模拟体系体积 (nm^3)
++        dipole_unit: 偶极矩单位，可选 'e*A', 'Debye'
++        
++    Returns:
++        介电常数 (无量纲)
++    """
++    # 读取偶极矩数据
++    dipole_data = np.loadtxt(dipole_file, skiprows=1)
++    
++    # 提取偶极矩分量
++    if dipole_data.ndim > 1 and dipole_data.shape[1] >= 4:
++        # 假设文件格式：时间 Mx My Mz
++        mx = dipole_data[:, 1]
++        my = dipole_data[:, 2]
++        mz = dipole_data[:, 3]
++    else:
++        raise ValueError("偶极矩数据格式错误，需要至少4列：时间 Mx My Mz")
++    
++    # 计算总偶极矩
++    m_total = np.sqrt(mx**2 + my**2 + mz**2)
++    
++    # 单位转换
++    dipole_factor = 1.0
++    if dipole_unit == 'e*A':
++        # 从e*A到C*m的转换
++        dipole_factor = E_CHARGE * 1e-10
++    elif dipole_unit == 'Debye':
++        # 从Debye到C*m的转换（1 D = 3.33564e-30 C*m）
++        dipole_factor = 3.33564e-30
++    
++    # 转换体积从nm^3到m^3
++    volume_m3 = volume * 1e-27
++    
++    # 计算偶极矩平方的平均值
++    m_squared_avg = np.mean(m_total**2) * (dipole_factor**2)
++    
++    # 计算介电常数
++    dielectric_constant = 1 + m_squared_avg / (3 * EPSILON_0 * volume_m3 * KB * temperature)
++    
++    return dielectric_constant
++
++def calculate_transference_number(cation_diffusion: float, anion_diffusion: float,
++                                cation_valence: int = 1, anion_valence: int = 1) -> float:
++    """
++    计算离子迁移数
++    
++    迁移数 t_+ = (z_+*D_+)/(z_+*D_+ + z_-*D_-)
++    
++    Args:
++        cation_diffusion: 阳离子扩散系数 (m^2/s)
++        anion_diffusion: 阴离子扩散系数 (m^2/s)
++        cation_valence: 阳离子价数
++        anion_valence: 阴离子价数
++        
++    Returns:
++        阳离子迁移数 (无量纲，范围0-1)
++    """
++    numerator = cation_valence * cation_diffusion
++    denominator = cation_valence * cation_diffusion + anion_valence * anion_diffusion
++    
++    if denominator == 0:
++        return 0.5  # 默认值
++    
++    transference_number = numerator / denominator
++    return transference_number
++
++def calculate_haven_ratio(conductivity_md: float, conductivity_ne: float) -> float:
++    """
++    计算Haven比率
++    
++    Haven比率 = σ_MD / σ_NE
++    
++    Args:
++        conductivity_md: 从MD轨迹直接计算的电导率
++        conductivity_ne: 使用Nernst-Einstein方程计算的电导率
++        
++    Returns:
++        Haven比率
++    """
++    if conductivity_ne == 0:
++        return 1.0  # 默认值
++    
++    haven_ratio = conductivity_md / conductivity_ne
++    return haven_ratio
++
++def calculate_diffusion_activation_energy(diffusion_coeffs: list, temperatures: list) -> tuple:
++    """
++    使用Arrhenius方程计算扩散活化能
++    
++    D = D0 * exp(-Ea/kB*T)
++    
++    Args:
++        diffusion_coeffs: 不同温度下的扩散系数列表 (m^2/s)
++        temperatures: 对应的温度列表 (K)
++        
++    Returns:
++        活化能 (kJ/mol) 和指前因子 D0
++    """
++    # 转换为Arrhenius形式
++    x = 1 / (np.array(temperatures) * KB / E_CHARGE)  # 1/kT in eV^-1
++    y = np.log(np.array(diffusion_coeffs))
++    
++    # 线性拟合
++    slope, intercept, r_value, _, _ = stats.linregress(x, y)
++    
++    # 计算活化能 (kJ/mol)
++    activation_energy = -slope * E_CHARGE * NA / 1000
++    
++    # 计算指前因子
++    d0 = np.exp(intercept)
++    
++    return activation_energy, d0, r_value**2
++
++def calculate_viscosity(diffusion_coeff: float, particle_radius: float = 0.1, 
++                       temperature: float = 298.15) -> float:
++    """
++    使用Stokes-Einstein关系计算粘度
++    
++    η = kB*T / (6π*r*D)
++    
++    Args:
++        diffusion_coeff: 粒子扩散系数 (m^2/s)
++        particle_radius: 粒子半径 (nm)
++        temperature: 温度 (K)
++        
++    Returns:
++        粘度 (Pa*s)
++    """
++    # 转换半径从nm到m
++    radius_m = particle_radius * 1e-9
++    
++    # 使用Stokes-Einstein方程计算粘度
++    viscosity = KB * temperature / (6 * PI * radius_m * diffusion_coeff)
++    
++    return viscosity
++
+ def main():
+     """命令行入口函数"""
+     # 配置参数解析器
+diff --git a/molyte_cursor/src/analysis/msd_analyzer.py b/molyte_cursor/src/analysis/msd_analyzer.py
+index df06688..3122683 100644
+--- a/molyte_cursor/src/analysis/msd_analyzer.py
++++ b/molyte_cursor/src/analysis/msd_analyzer.py
+@@ -295,4 +295,162 @@ class MSDAnalyzer:
+             
+         except Exception as e:
+             self.logger.error(f"处理样品 {sample_name} 的MSD数据时出错: {e}")
++            raise
++            
++    def calculate_ionic_conductivity(self, msd_file: str, temperature: float = 298.15, 
++                                   concentration: float = 1.0, 
++                                   cation_valence: int = 1, anion_valence: int = 1) -> Dict[str, float]:
++        """
++        使用Nernst-Einstein方程计算离子电导率
++        
++        电导率 σ = (e^2 * N_A * C / kB / T) * (z_+^2 * D_+ + z_-^2 * D_-)
++        
++        Args:
++            msd_file: MSD数据文件路径
++            temperature: 温度 (K)
++            concentration: 电解质浓度 (mol/L)
++            cation_valence: 阳离子价数
++            anion_valence: 阴离子价数
++            
++        Returns:
++            包含电导率和相关参数的字典
++        """
++        self.logger.info(f"计算离子电导率: {msd_file}")
++        
++        try:
++            # 计算扩散系数
++            diffusion_coeffs = self.calculate_diffusion_coefficient(msd_file)
++            
++            # 物理常数
++            e_charge = 1.60217662e-19  # 电子电荷 (C)
++            kb = 1.38064852e-23  # 玻尔兹曼常数 (J/K)
++            na = 6.022e23  # 阿伏伽德罗常数 (mol^-1)
++            
++            # 转换浓度从mol/L到mol/m^3
++            concentration_mol_m3 = concentration * 1000  # 1000 L/m^3
++            
++            # 转换扩散系数从10^-9 m^2/s到m^2/s
++            d_cation = diffusion_coeffs['D_total'] * 1e-9  # 使用总体扩散系数作为阳离子扩散系数
++            d_anion = diffusion_coeffs['D_total'] * 1e-9   # 使用总体扩散系数作为阴离子扩散系数
++            
++            # 计算电导率 (S/m)
++            conductivity = (e_charge**2 * na * concentration_mol_m3 / (kb * temperature)) * \
++                          (cation_valence**2 * d_cation + anion_valence**2 * d_anion)
++            
++            # 计算摩尔电导率 (S*m^2/mol)
++            molar_conductivity = conductivity / concentration_mol_m3
++            
++            # 计算阳离子迁移数
++            cation_transport = cation_valence**2 * d_cation
++            anion_transport = anion_valence**2 * d_anion
++            transference_number = cation_transport / (cation_transport + anion_transport)
++            
++            results = {
++                'conductivity': conductivity,  # S/m
++                'conductivity_mS_cm': conductivity * 0.1,  # mS/cm
++                'molar_conductivity': molar_conductivity,  # S*m^2/mol
++                'transference_number': transference_number,  # 无量纲
++                'diffusion_cation': d_cation,  # m^2/s
++                'diffusion_anion': d_anion,  # m^2/s
++                'temperature': temperature,  # K
++                'concentration': concentration  # mol/L
++            }
++            
++            self.logger.info(f"离子电导率计算结果: {results['conductivity_mS_cm']:.4f} mS/cm")
++            return results
++            
++        except Exception as e:
++            self.logger.error(f"计算离子电导率时出错: {e}")
++            raise
++            
++    def process_electrochemical_data(self, sample_name: str, current_directory: str, output_directory: str,
++                                   temperature: float = 298.15, concentration: float = 1.0,
++                                   cation_valence: int = 1, anion_valence: int = 1,
++                                   particle_radius: float = 0.2) -> Dict[str, Any]:
++        """
++        处理样品的电化学数据，计算各种电化学性能参数
++        
++        Args:
++            sample_name: 样品名称
++            current_directory: 当前处理目录
++            output_directory: 输出数据目录
++            temperature: 温度 (K)
++            concentration: 电解质浓度 (mol/L)
++            cation_valence: 阳离子价数
++            anion_valence: 阴离子价数
++            particle_radius: 粒子半径 (nm)，用于估算粘度
++            
++        Returns:
++            包含所有电化学性能参数的字典
++        """
++        self.logger.info(f"处理样品 {sample_name} 的电化学数据")
++        
++        try:
++            # 定义文件路径
++            msd_file = os.path.join(current_directory, 'out_msd.dat')
++            electrochemical_file = os.path.join(output_directory, f'electrochemical_{sample_name}.txt')
++            
++            # 检查MSD文件是否存在
++            if not os.path.exists(msd_file):
++                self.logger.warning(f"MSD文件不存在: {msd_file}")
++                return {}
++            
++            # 计算扩散系数
++            diffusion_coeffs = self.calculate_diffusion_coefficient(msd_file)
++            
++            # 计算电导率和相关参数
++            conductivity_results = self.calculate_ionic_conductivity(
++                msd_file, temperature, concentration, cation_valence, anion_valence
++            )
++            
++            # 物理常数
++            kb = 1.38064852e-23  # 玻尔兹曼常数 (J/K)
++            pi = 3.14159265359  # 圆周率
++            
++            # 转换半径从nm到m
++            radius_m = particle_radius * 1e-9
++            
++            # 转换扩散系数从10^-9 m^2/s到m^2/s
++            d_total = diffusion_coeffs['D_total'] * 1e-9
++            
++            # 使用Stokes-Einstein关系计算粘度 (Pa*s)
++            viscosity = kb * temperature / (6 * pi * radius_m * d_total)
++            
++            # 整合所有结果
++            results = {
++                'sample_name': sample_name,
++                'diffusion_coeffs': diffusion_coeffs,  # 10^-9 m^2/s
++                'conductivity': conductivity_results['conductivity'],  # S/m
++                'conductivity_mS_cm': conductivity_results['conductivity_mS_cm'],  # mS/cm
++                'molar_conductivity': conductivity_results['molar_conductivity'],  # S*m^2/mol
++                'transference_number': conductivity_results['transference_number'],  # 无量纲
++                'viscosity': viscosity,  # Pa*s
++                'viscosity_mPa_s': viscosity * 1000,  # mPa*s (cP)
++                'temperature': temperature,  # K
++                'concentration': concentration  # mol/L
++            }
++            
++            # 保存结果到文件
++            with open(electrochemical_file, 'w') as f:
++                f.write(f"样品: {sample_name}\n")
++                f.write(f"温度: {temperature} K\n")
++                f.write(f"浓度: {concentration} mol/L\n\n")
++                
++                f.write("扩散系数 (10^-9 m^2/s):\n")
++                f.write(f"X方向: {diffusion_coeffs['D_x']:.6f}\n")
++                f.write(f"Y方向: {diffusion_coeffs['D_y']:.6f}\n")
++                f.write(f"Z方向: {diffusion_coeffs['D_z']:.6f}\n")
++                f.write(f"总体: {diffusion_coeffs['D_total']:.6f}\n\n")
++                
++                f.write("电化学性能参数:\n")
++                f.write(f"电导率: {results['conductivity']:.6e} S/m ({results['conductivity_mS_cm']:.4f} mS/cm)\n")
++                f.write(f"摩尔电导率: {results['molar_conductivity']:.6e} S*m^2/mol\n")
++                f.write(f"阳离子迁移数: {results['transference_number']:.4f}\n")
++                f.write(f"粘度: {results['viscosity']:.6e} Pa*s ({results['viscosity_mPa_s']:.4f} mPa*s)\n")
++            
++            self.logger.info(f"样品 {sample_name} 的电化学数据处理完成")
++            return results
++            
++        except Exception as e:
++            self.logger.error(f"处理样品 {sample_name} 的电化学数据时出错: {e}")
+             raise 
+\ No newline at end of file
+diff --git a/molyte_cursor/src/analysis/solvent_analyzer.py b/molyte_cursor/src/analysis/solvent_analyzer.py
+index c94a914..4b97f47 100644
+--- a/molyte_cursor/src/analysis/solvent_analyzer.py
++++ b/molyte_cursor/src/analysis/solvent_analyzer.py
+@@ -1,426 +1,846 @@
+ """
+-溶剂分析模块
+-
+-用于分析分子动力学模拟中溶剂和溶质相互作用的功能
++溶剂分析器模块，用于分析溶剂化结构、处理周期性边界条件并导出溶剂化结构
+ """
+ 
+ import os
+-import logging
+ import numpy as np
+ import pandas as pd
+-from collections import Counter, defaultdict
+-from typing import Dict, List, Tuple, Optional, Union, Any
++from pathlib import Path
++import re
++import matplotlib.pyplot as plt
++from ..utils.logger import Logger
++from .trajectory_processor import TrajectoryProcessor
+ 
+ class SolventAnalyzer:
+-    """
+-    溶剂分析器
++    """溶剂分析器类，用于分析溶剂化结构并处理周期性边界条件"""
+     
+-    提供分析分子动力学模拟中溶剂和溶质相互作用的功能
+-    """
+-    def __init__(self, working_dir: str, logger=None):
+-        """
+-        初始化溶剂分析器
+-
++    def __init__(self):
++        """初始化溶剂分析器"""
++        self.logger = Logger().get_logger()
++        self.trajectory_processor = TrajectoryProcessor()
++    
++    def read_xyz_trajectory(self, trajectory_file, frame_index=-1):
++        """读取XYZ轨迹文件中的指定帧
++        
+         Args:
+-            working_dir: 工作目录路径
+-            logger: 日志记录器实例
++            trajectory_file: 轨迹文件路径
++            frame_index: 帧索引，-1表示最后一帧
++            
++        Returns:
++            (元素列表, 坐标数组, 盒子尺寸)
+         """
+-        self.working_dir = working_dir
+-        self.logger = logger or logging.getLogger(__name__)
++        self.logger.info(f"从文件 {trajectory_file} 读取第 {frame_index} 帧")
++        
++        frames = []
++        elements = []
++        current_frame = []
++        atoms_per_frame = None
++        box_size = None
++        
++        with open(trajectory_file, 'r') as f:
++            lines = f.readlines()
++            
++            line_index = 0
++            while line_index < len(lines):
++                if not lines[line_index].strip():
++                    line_index += 1
++                    continue
++                
++                # 读取原子数
++                atom_count = int(lines[line_index].strip())
++                if atoms_per_frame is None:
++                    atoms_per_frame = atom_count
++                    
++                # 读取注释行(可能包含盒子信息)
++                line_index += 1
++                comment = lines[line_index].strip()
++                box_match = re.search(r'Box:\s*([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)', comment)
++                if box_match:
++                    box_size = np.array([
++                        float(box_match.group(1)),
++                        float(box_match.group(2)),
++                        float(box_match.group(3))
++                    ])
++                
++                # 读取原子坐标
++                frame_elements = []
++                frame_coords = []
++                
++                line_index += 1
++                for i in range(atom_count):
++                    if line_index >= len(lines):
++                        break
++                        
++                    line = lines[line_index].strip()
++                    parts = line.split()
++                    
++                    if len(parts) >= 4:
++                        element = parts[0]
++                        x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
++                        
++                        frame_elements.append(element)
++                        frame_coords.append([x, y, z])
++                    
++                    line_index += 1
++                
++                frames.append(np.array(frame_coords))
++                if not elements:  # 只保存第一帧的元素列表，假设所有帧元素相同
++                    elements = frame_elements
++        
++        if not frames:
++            self.logger.error(f"未能从文件 {trajectory_file} 读取任何帧")
++            return None, None, None
++        
++        # 选择指定帧
++        if frame_index < 0:
++            frame_index = len(frames) + frame_index
++        
++        if frame_index < 0 or frame_index >= len(frames):
++            self.logger.error(f"帧索引 {frame_index} 超出范围 [0, {len(frames)-1}]")
++            return None, None, None
++        
++        return elements, frames[frame_index], box_size
+     
+-    def apply_pbc(self, atom_pos: np.ndarray, reference_pos: np.ndarray, box_length: List[float]) -> np.ndarray:
+-        """
+-        根据周期性边界条件，将原子坐标调整到相对于参考原子最近的位置
+-
++    def identify_molecules(self, elements, coords, bond_threshold=2.0):
++        """识别分子结构
++        
+         Args:
+-            atom_pos: 原子的坐标
+-            reference_pos: 参考原子的坐标
+-            box_length: 包围盒的长度 [x, y, z]
+-
++            elements: 元素列表
++            coords: 坐标数组
++            bond_threshold: 成键距离阈值
++            
+         Returns:
+-            调整后的原子坐标
++            分子索引列表的列表（每个分子的原子索引）
+         """
+-        delta = atom_pos - reference_pos
+-        for i in range(3):  # 遍历 x, y, z 轴
+-            if delta[i] > 0.5 * box_length[i]:
+-                atom_pos[i] -= box_length[i]
+-            elif delta[i] < -0.5 * box_length[i]:
+-                atom_pos[i] += box_length[i]
+-        return atom_pos
+-
+-    def assign_atoms_to_molecules(self, atom_counts: Dict[str, int]) -> Dict[str, Tuple[int, int]]:
++        self.logger.info("基于原子距离识别分子")
++        
++        n_atoms = len(elements)
++        # 创建连接矩阵
++        connections = np.zeros((n_atoms, n_atoms), dtype=bool)
++        
++        # 计算所有原子对之间的距离
++        for i in range(n_atoms):
++            for j in range(i+1, n_atoms):
++                dist = np.linalg.norm(coords[i] - coords[j])
++                if dist < bond_threshold:
++                    connections[i, j] = connections[j, i] = True
++        
++        # 使用深度优先搜索找到连通分量（即分子）
++        visited = np.zeros(n_atoms, dtype=bool)
++        molecules = []
++        
++        for i in range(n_atoms):
++            if not visited[i]:
++                molecule = []
++                self._dfs(i, connections, visited, molecule)
++                molecules.append(molecule)
++        
++        self.logger.info(f"找到 {len(molecules)} 个分子")
++        return molecules
++    
++    def _dfs(self, node, connections, visited, component):
++        """深度优先搜索用于找到连通分量（分子）
++        
++        Args:
++            node: 当前节点
++            connections: 连接矩阵
++            visited: 访问标记数组
++            component: 当前连通分量
+         """
+-        根据每个分子的原子数量，计算分子中原子的索引范围
+-
++        visited[node] = True
++        component.append(node)
++        
++        for neighbor in np.where(connections[node])[0]:
++            if not visited[neighbor]:
++                self._dfs(neighbor, connections, visited, component)
++    
++    def identify_ion_types(self, elements, molecules):
++        """识别分子类型（阳离子、阴离子、溶剂）
++        
+         Args:
+-            atom_counts: 分子名称到原子数量的映射
+-
++            elements: 元素列表
++            molecules: 分子索引列表的列表
++            
+         Returns:
+-            分子名称到 (start_idx, end_idx) 的映射
++            (阳离子列表, 阴离子列表, 溶剂列表)，每个列表包含分子索引
+         """
+-        atom_ranges = {}
+-        start_idx = 1  # 从1开始，因为索引从1开始
+-
+-        for molecule, count in atom_counts.items():
+-            end_idx = start_idx + count - 1
+-            atom_ranges[molecule] = (start_idx, end_idx)
+-            self.logger.debug(f"分配分子 '{molecule}' 到原子索引 {start_idx}-{end_idx}")
+-            start_idx = end_idx + 1
+-
+-        self.logger.debug(f"最终原子范围: {atom_ranges}")
+-        return atom_ranges
+-
+-    def find_molecule_for_atom(self, atom_index: int, atom_ranges: Dict[str, Tuple[int, int]]) -> Optional[str]:
+-        """
+-        根据原子索引，查找该原子属于哪个分子
+-
++        self.logger.info("识别分子类型（阳离子、阴离子、溶剂）")
++        
++        # 定义阳离子和阴离子元素
++        cation_elements = ['Li', 'Na', 'K', 'Zn', 'Mg', 'Ca', 'Rb', 'Cs']
++        anion_elements = ['F', 'Cl', 'Br', 'I', 'O', 'N', 'S', 'P', 'B']
++        
++        cations = []
++        anions = []
++        solvents = []
++        
++        for mol_indices in molecules:
++            # 检查分子是否是单原子离子
++            if len(mol_indices) == 1:
++                element = elements[mol_indices[0]]
++                if element in cation_elements:
++                    cations.append(mol_indices)
++                elif element in anion_elements:
++                    anions.append(mol_indices)
++                else:
++                    solvents.append(mol_indices)
++            else:
++                # 多原子分子，检查元素构成
++                mol_elements = [elements[i] for i in mol_indices]
++                
++                # 简单启发式规则：含有N、O、S、P的多原子分子可能是阴离子
++                if any(e in anion_elements for e in mol_elements) and len(mol_indices) < 20:
++                    anions.append(mol_indices)
++                else:
++                    # 其他多原子分子视为溶剂
++                    solvents.append(mol_indices)
++        
++        self.logger.info(f"识别出 {len(cations)} 个阳离子, {len(anions)} 个阴离子, {len(solvents)} 个溶剂分子")
++        return cations, anions, solvents
++    
++    def unwrap_coordinates(self, coords, molecules, box_size):
++        """修复周期性边界条件，使分子不跨越边界
++        
+         Args:
+-            atom_index: 原子的索引
+-            atom_ranges: 分子名称到 (start_idx, end_idx) 的映射
+-
++            coords: 坐标数组
++            molecules: 分子索引列表的列表
++            box_size: 盒子尺寸
++            
+         Returns:
+-            分子名称或 None（如果未找到）
+-        """
+-        for molecule, (start, end) in atom_ranges.items():
+-            if start <= atom_index <= end:
+-                self.logger.debug(f"原子 {atom_index} 属于分子 '{molecule}'")
+-                return molecule
+-        self.logger.debug(f"原子 {atom_index} 不属于任何分子")
+-        return None
+-
+-    def identify_molecule_from_types(self, atom_nums: List[int], atom_counts: Dict[str, int]) -> Counter:
++            修复后的坐标数组
+         """
+-        根据邻近原子的类型序号，统计所属的分子
+-
++        self.logger.info("修复周期性边界条件")
++        
++        fixed_coords = np.copy(coords)
++        
++        for mol_indices in molecules:
++            if len(mol_indices) <= 1:
++                continue  # 单原子分子不需要修复
++                
++            # 提取分子坐标
++            mol_coords = coords[mol_indices]
++            
++            # 计算分子质心
++            centroid = np.mean(mol_coords, axis=0)
++            
++            # 将所有原子移至靠近质心的周期性映像
++            for idx, atom_idx in enumerate(mol_indices):
++                for dim in range(3):
++                    # 计算原子与质心在各个维度的距离
++                    dist = fixed_coords[atom_idx, dim] - centroid[dim]
++                    # 如果距离大于半个盒子，则调整位置
++                    if dist > box_size[dim] / 2:
++                        fixed_coords[atom_idx, dim] -= box_size[dim]
++                    elif dist < -box_size[dim] / 2:
++                        fixed_coords[atom_idx, dim] += box_size[dim]
++        
++        return fixed_coords
++    
++    def calculate_ion_solvent_distances(self, coords, cations, solvents):
++        """计算所有阳离子和溶剂分子之间的距离
++        
+         Args:
+-            atom_nums: 原子类型编号的列表
+-            atom_counts: 分子名称到原子数量的映射
+-
++            coords: 坐标数组
++            cations: 阳离子列表
++            solvents: 溶剂列表
++            
+         Returns:
+-            分子名称到计数的映射
++            距离矩阵[阳离子索引][溶剂索引] = 距离
+         """
+-        molecule_counts = Counter()
+-        atom_ranges = self.assign_atoms_to_molecules(atom_counts)
+-        self.logger.debug(f"已分配原子范围: {atom_ranges}")
+-
+-        for atom_num in atom_nums:
+-            molecule = self.find_molecule_for_atom(atom_num, atom_ranges)
+-            if molecule:
+-                molecule_counts[molecule] += 1
+-                self.logger.debug(f"原子类型 {atom_num} 分配给分子 '{molecule}'")
++        self.logger.info("计算阳离子-溶剂距离")
++        
++        distances = {}
++        
++        for i, cation_indices in enumerate(cations):
++            distances[i] = {}
++            
++            # 计算阳离子位置（单原子离子或多原子离子的质心）
++            if len(cation_indices) == 1:
++                cation_pos = coords[cation_indices[0]]
+             else:
+-                self.logger.warning(f"原子类型 {atom_num} 无法分配给任何分子")
+-
+-        self.logger.debug(f"分子计数: {molecule_counts}")
+-        return molecule_counts
+-
+-    def parse_lammps_dump(self, file_path: str) -> Dict[int, Dict[str, Any]]:
++                cation_pos = np.mean(coords[cation_indices], axis=0)
++            
++            # 计算与每个溶剂分子的距离
++            for j, solvent_indices in enumerate(solvents):
++                # 计算溶剂分子质心
++                solvent_centroid = np.mean(coords[solvent_indices], axis=0)
++                
++                # 计算欧几里得距离
++                dist = np.linalg.norm(cation_pos - solvent_centroid)
++                distances[i][j] = dist
++        
++        return distances
++    
++    def extract_solvation_shell(self, elements, coords, cations, solvents, distances, 
++                               cutoff_distance=5.0, max_solvents=20):
++        """提取阳离子周围的溶剂化壳层
++        
++        Args:
++            elements: 元素列表
++            coords: 坐标数组
++            cations: 阳离子列表
++            solvents: 溶剂列表
++            distances: 距离矩阵
++            cutoff_distance: 截断距离
++            max_solvents: 每个阳离子最多考虑的溶剂分子数
++            
++        Returns:
++            溶剂化壳层信息的列表，每个元素包含(阳离子类型, 阳离子索引, 溶剂索引列表)
+         """
+-        解析 LAMMPS 轨迹文件，返回每个帧的原子数据
+-
++        self.logger.info(f"提取溶剂化壳层，截断距离: {cutoff_distance}埃，最大溶剂数: {max_solvents}")
++        
++        solvation_shells = []
++        
++        for i, cation_indices in enumerate(cations):
++            # 获取阳离子元素类型
++            cation_element = elements[cation_indices[0]]
++            
++            # 按距离排序溶剂分子
++            sorted_solvents = sorted(distances[i].items(), key=lambda x: x[1])
++            
++            # 只保留截断距离内的溶剂分子，最多max_solvents个
++            close_solvents = [j for j, dist in sorted_solvents 
++                             if dist <= cutoff_distance][:max_solvents]
++            
++            if close_solvents:
++                solvation_shells.append((cation_element, i, close_solvents))
++        
++        self.logger.info(f"提取了 {len(solvation_shells)} 个溶剂化壳层")
++        return solvation_shells
++    
++    def write_solvation_shell(self, output_path, elements, coords, cation_indices, solvent_indices_list, cation_element, cation_index):
++        """将溶剂化壳层写入XYZ文件
++        
+         Args:
+-            file_path: LAMMPS dump 文件的路径
+-
++            output_path: 输出文件路径
++            elements: 元素列表
++            coords: 坐标数组
++            cation_indices: 阳离子原子索引列表
++            solvent_indices_list: 溶剂分子索引列表的列表
++            cation_element: 阳离子元素类型
++            cation_index: 阳离子索引
++            
+         Returns:
+-            包含每一帧数据的字典，键为帧索引，值为包含原子数据的字典
++            是否成功
+         """
+-        self.logger.info(f"解析LAMMPS轨迹文件: {file_path}")
++        # 收集所有原子的索引
++        all_indices = cation_indices.copy()
++        for solvent_indices in solvent_indices_list:
++            all_indices.extend(solvent_indices)
++        
++        # 构建输出数据
++        selected_elements = [elements[i] for i in all_indices]
++        selected_coords = coords[all_indices]
+         
+-        frames = {}
+-        current_frame = None
+-        current_frame_idx = -1
+-        atom_count = 0
+-        box_size = [0, 0, 0]
++        # 计算阳离子位置（作为参考点）
++        if len(cation_indices) == 1:
++            reference_point = coords[cation_indices[0]]
++        else:
++            reference_point = np.mean(coords[cation_indices], axis=0)
+         
++        # 平移坐标，使阳离子位于中心
++        centered_coords = selected_coords - reference_point
++        
++        # 创建输出目录
++        output_dir = os.path.dirname(output_path)
++        os.makedirs(output_dir, exist_ok=True)
++        
++        # 写入XYZ文件
+         try:
+-            with open(file_path, 'r') as f:
+-                for line in f:
+-                    line = line.strip()
+-                    
+-                    # 处理新的时间步
+-                    if line.startswith("ITEM: TIMESTEP"):
+-                        # 保存上一帧数据（如果存在）
+-                        if current_frame is not None:
+-                            frames[current_frame_idx] = {
+-                                'timestep': current_frame_idx,
+-                                'atoms': current_frame,
+-                                'atom_count': atom_count,
+-                                'box_size': box_size
+-                            }
+-                        
+-                        # 读取新的时间步
+-                        current_frame_idx = int(next(f).strip())
+-                        current_frame = {}
+-                        self.logger.debug(f"处理时间步: {current_frame_idx}")
+-                    
+-                    # 处理原子数量
+-                    elif line.startswith("ITEM: NUMBER OF ATOMS"):
+-                        atom_count = int(next(f).strip())
+-                        self.logger.debug(f"原子数量: {atom_count}")
+-                    
+-                    # 处理模拟盒子大小
+-                    elif line.startswith("ITEM: BOX BOUNDS"):
+-                        for i in range(3):  # 假设是3D模拟
+-                            box_line = next(f).strip().split()
+-                            box_min = float(box_line[0])
+-                            box_max = float(box_line[1])
+-                            box_size[i] = box_max - box_min
+-                        self.logger.debug(f"模拟盒子大小: {box_size}")
++            with open(output_path, 'w') as f:
++                f.write(f"{len(selected_elements)}\n")
++                f.write(f"{cation_element}{cation_index+1}的溶剂化结构, 包含{len(solvent_indices_list)}个溶剂分子\n")
++                
++                for i, element in enumerate(selected_elements):
++                    x, y, z = centered_coords[i]
++                    f.write(f"{element} {x:.6f} {y:.6f} {z:.6f}\n")
+                     
+-                    # 处理原子数据
+-                    elif line.startswith("ITEM: ATOMS"):
+-                        # 分析列标题
+-                        columns = line.split()[2:]  # 跳过"ITEM: ATOMS"
+-                        col_indices = {col: idx for idx, col in enumerate(columns)}
+-                        
+-                        # 读取原子数据
+-                        for _ in range(atom_count):
+-                            atom_line = next(f).strip().split()
+-                            atom_id = int(atom_line[col_indices.get('id', 0)])
+-                            
+-                            # 收集原子数据
+-                            atom_data = {}
+-                            for col in columns:
+-                                col_idx = col_indices[col]
+-                                # 尝试转换为数值类型
+-                                try:
+-                                    atom_data[col] = float(atom_line[col_idx])
+-                                except ValueError:
+-                                    atom_data[col] = atom_line[col_idx]
+-                            
+-                            current_frame[atom_id] = atom_data
+-            
+-            # 保存最后一帧数据
+-            if current_frame is not None:
+-                frames[current_frame_idx] = {
+-                    'timestep': current_frame_idx,
+-                    'atoms': current_frame,
+-                    'atom_count': atom_count,
+-                    'box_size': box_size
+-                }
+-            
+-            self.logger.info(f"解析完成，共 {len(frames)} 帧数据")
+-            return frames
+-            
++            self.logger.info(f"已保存溶剂化壳层到文件: {output_path}")
++            return True
+         except Exception as e:
+-            self.logger.error(f"解析LAMMPS轨迹文件时出错: {e}")
+-            return {}
+-
+-    def save_anion_distribution_to_excel(self, anion_count_distribution: Dict[int, Dict[str, int]], 
+-                                         file_path: str) -> None:
+-        """
+-        将阴离子分布数据保存到Excel文件
+-
++            self.logger.error(f"保存溶剂化壳层文件失败: {str(e)}")
++            return False
++    
++    def analyze_solvation_structure(self, trajectory_file, output_dir, frame_index=-1, cutoff_distance=5.0, max_solvents=20, bond_threshold=2.0):
++        """分析溶剂化结构并输出结果
++        
+         Args:
+-            anion_count_distribution: 阴离子分布数据，键为阳离子ID，值为分子类型到计数的映射
+-            file_path: 输出Excel文件路径
++            trajectory_file: 轨迹文件路径
++            output_dir: 输出目录路径
++            frame_index: 帧索引，-1表示最后一帧
++            cutoff_distance: 截断距离，用于定义溶剂化壳层
++            max_solvents: 每个阳离子最多考虑的溶剂分子数
++            bond_threshold: 识别分子时的键长阈值
++            
++        Returns:
++            (溶剂化壳层信息列表, 输出文件路径列表)
+         """
+-        self.logger.info(f"保存阴离子分布数据到Excel: {file_path}")
++        self.logger.info(f"开始分析文件 {trajectory_file} 的溶剂化结构")
+         
+-        try:
+-            # 转换为DataFrame
+-            df_data = []
+-            for cation_id, counts in anion_count_distribution.items():
+-                row = {'cation_id': cation_id}
+-                row.update(counts)
+-                df_data.append(row)
+-            
+-            df = pd.DataFrame(df_data)
++        # 创建输出目录
++        output_dir = Path(output_dir)
++        output_dir.mkdir(parents=True, exist_ok=True)
++        
++        # 读取轨迹数据
++        elements, coords, box_size = self.read_xyz_trajectory(trajectory_file, frame_index)
++        if elements is None:
++            self.logger.error("无法读取轨迹数据")
++            return [], []
++        
++        # 识别分子
++        molecules = self.identify_molecules(elements, coords, bond_threshold)
++        
++        # 识别离子类型
++        cations, anions, solvents = self.identify_ion_types(elements, molecules)
++        
++        # 修复周期性边界条件
++        fixed_coords = self.unwrap_coordinates(coords, molecules, box_size)
++        
++        # 计算离子-溶剂距离
++        distances = self.calculate_ion_solvent_distances(fixed_coords, cations, solvents)
++        
++        # 提取溶剂化壳层
++        solvation_shells = self.extract_solvation_shell(
++            elements, fixed_coords, cations, solvents, distances, 
++            cutoff_distance, max_solvents
++        )
++        
++        # 输出溶剂化壳层到文件
++        output_files = []
++        for cation_element, cation_idx, solvent_indices in solvation_shells:
++            # 使用阳离子类型和索引命名文件
++            output_file = output_dir / f"{cation_element}_{cation_idx+1}_solvation.xyz"
+             
+-            # 保存到Excel
+-            df.to_excel(file_path, index=False)
+-            self.logger.info(f"阴离子分布数据已保存到: {file_path}")
++            # 获取该阳离子的溶剂分子
++            solvent_molecules = [solvents[j] for j in solvent_indices]
+             
+-        except Exception as e:
+-            self.logger.error(f"保存阴离子分布数据时出错: {e}")
+-
+-    def write_xyz_custom(self, filename: str, atoms: Dict[int, Dict[str, Any]], 
+-                         atom_dict: Dict[int, str]) -> None:
+-        """
+-        将原子数据写入自定义XYZ格式文件
+-
++            # 写入溶剂化壳层
++            if self.write_solvation_shell(
++                output_file, elements, fixed_coords, 
++                cations[cation_idx], solvent_molecules,
++                cation_element, cation_idx
++            ):
++                output_files.append(output_file)
++        
++        self.logger.info(f"溶剂化结构分析完成，输出了 {len(output_files)} 个文件")
++        return solvation_shells, output_files
++    
++    def analyze_coordination_numbers(self, trajectory_file, output_dir, cutoff_distances=None, 
++                                    frame_indices=None, bond_threshold=2.0):
++        """分析配位数随时间/距离的变化
++        
+         Args:
+-            filename: 输出文件路径
+-            atoms: 原子数据，键为原子ID，值为原子属性字典
+-            atom_dict: 原子类型ID到元素符号的映射
++            trajectory_file: 轨迹文件路径
++            output_dir: 输出目录路径
++            cutoff_distances: 截断距离列表，默认为[3.0, 4.0, 5.0]
++            frame_indices: 要分析的帧索引列表，默认为所有帧
++            bond_threshold: 识别分子时的键长阈值
++            
++        Returns:
++            配位数数据和图表文件路径
+         """
+-        self.logger.info(f"写入自定义XYZ文件: {filename}")
++        self.logger.info(f"分析文件 {trajectory_file} 的配位数")
+         
+-        try:
+-            with open(filename, 'w') as f:
+-                # 写入原子数量
+-                f.write(f"{len(atoms)}\n")
+-                f.write("Generated by Molyte\n")
++        if cutoff_distances is None:
++            cutoff_distances = [3.0, 4.0, 5.0]
++        
++        # 创建输出目录
++        output_dir = Path(output_dir)
++        output_dir.mkdir(parents=True, exist_ok=True)
++        
++        # 读取所有帧
++        frames = []
++        elements = None
++        box_size = None
++        
++        with open(trajectory_file, 'r') as f:
++            lines = f.readlines()
++            
++            line_index = 0
++            while line_index < len(lines):
++                if not lines[line_index].strip():
++                    line_index += 1
++                    continue
+                 
+-                # 写入原子坐标
+-                for atom_id, data in atoms.items():
+-                    atom_type = int(data.get('type', 0))
+-                    x = data.get('x', 0.0)
+-                    y = data.get('y', 0.0)
+-                    z = data.get('z', 0.0)
++                # 读取原子数
++                atom_count = int(lines[line_index].strip())
+                     
+-                    # 查找元素符号
+-                    element = atom_dict.get(atom_type, f"X{atom_type}")
++                # 读取注释行(可能包含盒子信息)
++                line_index += 1
++                comment = lines[line_index].strip()
++                box_match = re.search(r'Box:\s*([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)', comment)
++                if box_match and box_size is None:
++                    box_size = np.array([
++                        float(box_match.group(1)),
++                        float(box_match.group(2)),
++                        float(box_match.group(3))
++                    ])
++                
++                # 读取原子坐标
++                frame_elements = []
++                frame_coords = []
++                
++                line_index += 1
++                for i in range(atom_count):
++                    if line_index >= len(lines):
++                        break
++                        
++                    line = lines[line_index].strip()
++                    parts = line.split()
+                     
+-                    f.write(f"{element} {x:.6f} {y:.6f} {z:.6f}\n")
++                    if len(parts) >= 4:
++                        element = parts[0]
++                        x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
++                        
++                        frame_elements.append(element)
++                        frame_coords.append([x, y, z])
++                    
++                    line_index += 1
++                
++                frames.append(np.array(frame_coords))
++                if elements is None:  # 只保存第一帧的元素列表，假设所有帧元素相同
++                    elements = frame_elements
++        
++        if not frames:
++            self.logger.error(f"未能从文件 {trajectory_file} 读取任何帧")
++            return None, []
++        
++        # 选择要分析的帧
++        if frame_indices is None:
++            frame_indices = list(range(len(frames)))
++        
++        # 分析每一帧
++        coordination_data = {cutoff: [] for cutoff in cutoff_distances}
++        
++        for frame_idx in frame_indices:
++            if frame_idx < 0 or frame_idx >= len(frames):
++                continue
++                
++            coords = frames[frame_idx]
+             
+-            self.logger.info(f"XYZ文件已保存: {filename}")
++            # 分析该帧
++            molecules = self.identify_molecules(elements, coords, bond_threshold)
++            cations, anions, solvents = self.identify_ion_types(elements, molecules)
++            fixed_coords = self.unwrap_coordinates(coords, molecules, box_size)
++            distances = self.calculate_ion_solvent_distances(fixed_coords, cations, solvents)
+             
+-        except Exception as e:
+-            self.logger.error(f"写入XYZ文件时出错: {e}")
+-
+-    def analyze_solvent_distribution(self, dump_file: str, atom_counts: Dict[str, int], 
+-                              cation_atom_types: List[int], anion_atom_types: List[int], 
+-                              solvent_atom_types: List[int], cutoff_distance: float = 5.0) -> Dict[str, Any]:
++            # 计算不同截断距离下的配位数
++            for cutoff in cutoff_distances:
++                coordinations = []
++                for cation_idx in distances:
++                    # 计算该阳离子的配位数
++                    coordination = sum(1 for dist in distances[cation_idx].values() if dist <= cutoff)
++                    coordinations.append(coordination)
++                
++                # 计算平均配位数
++                if coordinations:
++                    avg_coordination = sum(coordinations) / len(coordinations)
++                    coordination_data[cutoff].append((frame_idx, avg_coordination))
++        
++        # 绘制配位数随时间的变化图
++        plt.figure(figsize=(10, 6))
++        for cutoff in cutoff_distances:
++            if coordination_data[cutoff]:
++                x, y = zip(*coordination_data[cutoff])
++                plt.plot(x, y, label=f'Cutoff = {cutoff} Å')
++        
++        plt.xlabel('Frame Index')
++        plt.ylabel('Average Coordination Number')
++        plt.title('Coordination Number vs Frame Index')
++        plt.legend()
++        plt.grid(True, linestyle='--', alpha=0.7)
++        
++        # 保存图表
++        plot_file = output_dir / "coordination_number_vs_frame.png"
++        plt.savefig(plot_file, dpi=300)
++        plt.close()
++        
++        # 保存数据到CSV
++        csv_file = output_dir / "coordination_data.csv"
++        with open(csv_file, 'w') as f:
++            f.write("Frame")
++            for cutoff in cutoff_distances:
++                f.write(f",Coordination (cutoff={cutoff})")
++            f.write("\n")
++            
++            # 假设所有截断距离的数据点数相同
++            if coordination_data[cutoff_distances[0]]:
++                for i in range(len(coordination_data[cutoff_distances[0]])):
++                    frame_idx = coordination_data[cutoff_distances[0]][i][0]
++                    f.write(f"{frame_idx}")
++                    
++                    for cutoff in cutoff_distances:
++                        if i < len(coordination_data[cutoff]):
++                            coord = coordination_data[cutoff][i][1]
++                            f.write(f",{coord:.4f}")
++                        else:
++                            f.write(",")
++                    
++                    f.write("\n")
++        
++        self.logger.info(f"配位数分析完成，输出数据到: {csv_file}")
++        return coordination_data, [plot_file, csv_file]
++    
++    def process_trajectory(self, trajectory_file, output_dir, unwrap=True, bond_threshold=2.0):
++        """处理轨迹文件，修复周期性边界条件并生成新的轨迹
++        
++        Args:
++            trajectory_file: 轨迹文件路径
++            output_dir: 输出目录路径
++            unwrap: 是否展开分子，防止跨越周期性边界
++            bond_threshold: 识别分子时的键长阈值
++            
++        Returns:
++            (是否成功, 输出文件路径)
+         """
+-        分析溶剂分布，计算阳离子和阴离子周围的溶剂数量
+-
++        self.logger.info(f"处理轨迹文件 {trajectory_file}")
++        
++        # 使用trajectory_processor处理轨迹
++        trajectory_path = Path(trajectory_file)
++        output_dir = Path(output_dir)
++        output_dir.mkdir(parents=True, exist_ok=True)
++        
++        output_file = output_dir / f"{trajectory_path.stem}_fixed.xyz"
++        
++        success = self.trajectory_processor.fix_periodic_molecules(
++            str(trajectory_path),
++            str(output_file),
++            bond_threshold=bond_threshold,
++            unwrap=unwrap
++        )
++        
++        if success:
++            self.logger.info(f"轨迹处理成功，输出到: {output_file}")
++        else:
++            self.logger.error(f"轨迹处理失败")
++        
++        return success, output_file
++    
++    def analyze_ion_pairs(self, coords, cations, anions, solvents, 
++                         cip_distance=4.0, ssip_distance=7.0):
++        """分析离子对类型：CIP（接触离子对）、SSIP（溶剂分离离子对）和AGG（聚集体）
++        
+         Args:
+-            dump_file: LAMMPS轨迹文件路径
+-            atom_counts: 分子类型到原子数量的映射
+-            cation_atom_types: 阳离子中代表性原子的类型列表
+-            anion_atom_types: 阴离子中代表性原子的类型列表
+-            solvent_atom_types: 溶剂中代表性原子的类型列表
+-            cutoff_distance: 溶剂化层的截止距离（埃）
+-
++            coords: 坐标数组
++            cations: 阳离子列表
++            anions: 阴离子列表
++            solvents: 溶剂列表
++            cip_distance: CIP的最大距离阈值（埃）
++            ssip_distance: SSIP的最大距离阈值（埃）
++            
+         Returns:
+-            包含分析结果的字典
++            包含离子对分析结果的字典
+         """
+-        self.logger.info(f"分析溶剂分布: {dump_file}")
++        self.logger.info(f"分析离子对类型，CIP距离阈值: {cip_distance}埃，SSIP距离阈值: {ssip_distance}埃")
+         
+-        # 解析轨迹文件
+-        frames = self.parse_lammps_dump(dump_file)
+-        if not frames:
+-            self.logger.error("无法解析轨迹文件或文件为空")
+-            return {}
+-        
+-        # 分配原子到分子
+-        atom_ranges = self.assign_atoms_to_molecules(atom_counts)
+-        
+-        # 用于存储结果的数据结构
+-        cation_solvation = defaultdict(list)
+-        anion_solvation = defaultdict(list)
+-        solvent_distributions = []
+-        
+-        # 遍历每一帧
+-        for frame_idx, frame_data in frames.items():
+-            atoms = frame_data['atoms']
+-            box_size = frame_data['box_size']
+-            
+-            # 提取阳离子和阴离子的坐标
+-            cation_coords = {}
+-            anion_coords = {}
+-            solvent_coords = {}
+-            
+-            for atom_id, atom_data in atoms.items():
+-                atom_type = int(atom_data.get('type', 0))
+-                coords = np.array([
+-                    atom_data.get('x', 0.0),
+-                    atom_data.get('y', 0.0),
+-                    atom_data.get('z', 0.0)
+-                ])
++        # 初始化结果
++        results = {
++            'cip_count': 0,  # 接触离子对数量
++            'ssip_count': 0, # 溶剂分离离子对数量
++            'agg_count': 0,  # 聚集体数量
++            'free_cation_count': 0, # 自由阳离子数量
++            'cip_pairs': [],  # CIP离子对列表
++            'ssip_pairs': [], # SSIP离子对列表
++            'agg_groups': [],  # 聚集体列表
++            'free_cations': [] # 自由阳离子列表
++        }
++        
++        # 如果没有阳离子或阴离子，直接返回
++        if not cations or not anions:
++            self.logger.warning("没有找到阳离子或阴离子，无法分析离子对")
++            return results
++        
++        # 计算所有阳离子和阴离子之间的距离
++        cation_anion_distances = {}
++        for i, cation_indices in enumerate(cations):
++            # 计算阳离子位置（单原子离子或多原子离子的质心）
++            if len(cation_indices) == 1:
++                cation_pos = coords[cation_indices[0]]
++            else:
++                cation_pos = np.mean(coords[cation_indices], axis=0)
++            
++            cation_anion_distances[i] = {}
++            
++            for j, anion_indices in enumerate(anions):
++                # 计算阴离子位置
++                if len(anion_indices) == 1:
++                    anion_pos = coords[anion_indices[0]]
++                else:
++                    anion_pos = np.mean(coords[anion_indices], axis=0)
+                 
+-                # 确定原子所属的分子
+-                molecule = self.find_molecule_for_atom(atom_type, atom_ranges)
++                # 计算欧几里得距离
++                dist = np.linalg.norm(cation_pos - anion_pos)
++                cation_anion_distances[i][j] = dist
++        
++        # 构建离子连接图（用于识别聚集体）
++        ion_connections = {}
++        for i in range(len(cations)):
++            ion_connections[i] = []
++            
++        # 分析每个阳离子
++        for i, cation_indices in enumerate(cations):
++            # 按距离排序阴离子
++            sorted_anions = sorted(cation_anion_distances[i].items(), key=lambda x: x[1])
++            
++            # 检查最近的阴离子
++            if sorted_anions:
++                nearest_anion_idx, nearest_distance = sorted_anions[0]
+                 
+-                # 根据原子类型分类
+-                if atom_type in cation_atom_types:
+-                    cation_coords[atom_id] = {'coords': coords, 'molecule': molecule, 'type': atom_type}
+-                elif atom_type in anion_atom_types:
+-                    anion_coords[atom_id] = {'coords': coords, 'molecule': molecule, 'type': atom_type}
+-                elif atom_type in solvent_atom_types:
+-                    solvent_coords[atom_id] = {'coords': coords, 'molecule': molecule, 'type': atom_type}
+-            
+-            # 分析阳离子周围的溶剂
+-            for cation_id, cation_data in cation_coords.items():
+-                cation_pos = cation_data['coords']
+-                nearby_solvents = []
++                # 判断离子对类型
++                if nearest_distance <= cip_distance:
++                    # 接触离子对 (CIP)
++                    results['cip_count'] += 1
++                    results['cip_pairs'].append((i, nearest_anion_idx))
++                    ion_connections[i].append(nearest_anion_idx)
++                elif nearest_distance <= ssip_distance:
++                    # 溶剂分离离子对 (SSIP)
++                    results['ssip_count'] += 1
++                    results['ssip_pairs'].append((i, nearest_anion_idx))
++                    ion_connections[i].append(nearest_anion_idx)
++                else:
++                    # 自由阳离子
++                    results['free_cation_count'] += 1
++                    results['free_cations'].append(i)
++            else:
++                # 没有阴离子
++                results['free_cation_count'] += 1
++                results['free_cations'].append(i)
++        
++        # 识别聚集体（连接的离子对网络）
++        visited = set()
++        
++        for i in range(len(cations)):
++            if i in visited:
++                continue
+                 
+-                for solvent_id, solvent_data in solvent_coords.items():
+-                    solvent_pos = solvent_data['coords']
+-                    
+-                    # 应用周期性边界条件
+-                    adjusted_pos = self.apply_pbc(solvent_pos.copy(), cation_pos, box_size)
+-                    
+-                    # 计算距离
+-                    distance = np.linalg.norm(adjusted_pos - cation_pos)
+-                    
+-                    if distance <= cutoff_distance:
+-                        nearby_solvents.append({
+-                            'id': solvent_id,
+-                            'type': solvent_data['type'],
+-                            'molecule': solvent_data['molecule'],
+-                            'distance': distance
+-                        })
++            if not ion_connections[i]:
++                continue  # 跳过自由离子
+                 
+-                # 统计溶剂分子类型
+-                solvent_count = Counter([s['molecule'] for s in nearby_solvents])
+-                cation_solvation[cation_id].append(solvent_count)
+-            
+-            # 分析阴离子周围的溶剂（类似于阳离子的分析）
+-            for anion_id, anion_data in anion_coords.items():
+-                anion_pos = anion_data['coords']
+-                nearby_solvents = []
++            # 使用BFS找到连接的离子对网络
++            agg_group = []
++            queue = [i]
++            visited.add(i)
++            
++            while queue:
++                current = queue.pop(0)
++                agg_group.append(current)
+                 
+-                for solvent_id, solvent_data in solvent_coords.items():
+-                    solvent_pos = solvent_data['coords']
+-                    
+-                    # 应用周期性边界条件
+-                    adjusted_pos = self.apply_pbc(solvent_pos.copy(), anion_pos, box_size)
+-                    
+-                    # 计算距离
+-                    distance = np.linalg.norm(adjusted_pos - anion_pos)
+-                    
+-                    if distance <= cutoff_distance:
+-                        nearby_solvents.append({
+-                            'id': solvent_id,
+-                            'type': solvent_data['type'],
+-                            'molecule': solvent_data['molecule'],
+-                            'distance': distance
+-                        })
++                for neighbor in ion_connections[current]:
++                    for cation_idx, pairs in ion_connections.items():
++                        if cation_idx not in visited and neighbor in pairs:
++                            queue.append(cation_idx)
++                            visited.add(cation_idx)
++            
++            # 如果网络包含多个离子对，则为聚集体
++            if len(agg_group) > 1:
++                results['agg_count'] += 1
++                results['agg_groups'].append(agg_group)
+                 
+-                # 统计溶剂分子类型
+-                solvent_count = Counter([s['molecule'] for s in nearby_solvents])
+-                anion_solvation[anion_id].append(solvent_count)
+-            
+-            # 记录这一帧的溶剂分布
+-            frame_distribution = {
+-                'timestep': frame_idx,
+-                'cation_solvation': {c_id: counter for c_id, counter in 
+-                                   [(c_id, cation_solvation[c_id][-1]) for c_id in cation_coords]},
+-                'anion_solvation': {a_id: counter for a_id, counter in 
+-                                  [(a_id, anion_solvation[a_id][-1]) for a_id in anion_coords]},
+-            }
+-            solvent_distributions.append(frame_distribution)
++                # 从CIP和SSIP计数中减去已经计入聚集体的离子对
++                for cation_idx in agg_group:
++                    if any((cation_idx, anion_idx) in results['cip_pairs'] for anion_idx in range(len(anions))):
++                        results['cip_count'] -= 1
++                    elif any((cation_idx, anion_idx) in results['ssip_pairs'] for anion_idx in range(len(anions))):
++                        results['ssip_count'] -= 1
++        
++        self.logger.info(f"离子对分析结果: CIP={results['cip_count']}, SSIP={results['ssip_count']}, AGG={results['agg_count']}, 自由阳离子={results['free_cation_count']}")
++        return results
++        
++    def analyze_solvent_distribution(self, trajectory_file, atom_counts=None, 
++                                    cation_atom_types=None, anion_atom_types=None, 
++                                    solvent_atom_types=None, cutoff_distance=5.0,
++                                    cip_distance=4.0, ssip_distance=7.0):
++        """分析溶剂分布
++        
++        Args:
++            trajectory_file: LAMMPS轨迹文件路径
++            atom_counts: 分子原子数量映射
++            cation_atom_types: 阳离子中代表性原子的类型列表
++            anion_atom_types: 阴离子中代表性原子的类型列表
++            solvent_atom_types: 溶剂中代表性原子的类型列表
++            cutoff_distance: 溶剂化层的截止距离（埃）
++            cip_distance: CIP的最大距离阈值（埃）
++            ssip_distance: SSIP的最大距离阈值（埃）
++            
++        Returns:
++            包含分析结果的字典
++        """
++        self.logger.info(f"分析溶剂分布: {trajectory_file}")
++        
++        # 读取轨迹文件
++        elements, coords, box_size = self.read_xyz_trajectory(trajectory_file)
++        if elements is None:
++            self.logger.error("无法读取轨迹数据")
++            return None
++        
++        # 识别分子
++        molecules = self.identify_molecules(elements, coords)
++        
++        # 识别离子类型
++        cations, anions, solvents = self.identify_ion_types(elements, molecules)
++        
++        # 修复周期性边界条件
++        fixed_coords = self.unwrap_coordinates(coords, molecules, box_size)
++        
++        # 计算离子-溶剂距离
++        distances = self.calculate_ion_solvent_distances(fixed_coords, cations, solvents)
++        
++        # 分析离子对类型
++        ion_pair_results = self.analyze_ion_pairs(fixed_coords, cations, anions, solvents, 
++                                                 cip_distance, ssip_distance)
++        
++        # 计算每个阳离子周围的溶剂分布
++        cation_solvation = {}
++        
++        for i, cation_indices in enumerate(cations):
++            # 按距离排序溶剂分子
++            sorted_solvents = sorted(distances[i].items(), key=lambda x: x[1])
++            
++            # 只考虑截断距离内的溶剂分子
++            close_solvents = [(j, dist) for j, dist in sorted_solvents if dist <= cutoff_distance]
++            
++            # 统计溶剂分子数量
++            cation_solvation[i] = len(close_solvents)
+         
+         # 计算平均溶剂化数
+-        avg_cation_solvation = {}
+-        for cation_id, frame_counts in cation_solvation.items():
+-            # 合并所有帧的计数
+-            all_counts = Counter()
+-            for count in frame_counts:
+-                all_counts.update(count)
+-            # 计算平均值
+-            avg_cation_solvation[cation_id] = {k: v / len(frame_counts) for k, v in all_counts.items()}
+-        
+-        avg_anion_solvation = {}
+-        for anion_id, frame_counts in anion_solvation.items():
+-            # 合并所有帧的计数
+-            all_counts = Counter()
+-            for count in frame_counts:
+-                all_counts.update(count)
+-            # 计算平均值
+-            avg_anion_solvation[anion_id] = {k: v / len(frame_counts) for k, v in all_counts.items()}
++        avg_solvation = sum(cation_solvation.values()) / len(cation_solvation) if cation_solvation else 0
+         
++        # 统计溶剂化数分布
++        solvation_distribution = {}
++        for count in cation_solvation.values():
++            solvation_distribution[count] = solvation_distribution.get(count, 0) + 1
++        
++        # 整合结果
+         results = {
+-            'frames': len(frames),
+-            'cation_count': len(cation_coords),
+-            'anion_count': len(anion_coords),
+-            'solvent_count': len(solvent_coords),
+-            'avg_cation_solvation': avg_cation_solvation,
+-            'avg_anion_solvation': avg_anion_solvation,
+-            'frame_distributions': solvent_distributions
++            'cation_count': len(cations),
++            'anion_count': len(anions),
++            'solvent_count': len(solvents),
++            'avg_solvation': avg_solvation,
++            'solvation_distribution': solvation_distribution,
++            'cation_solvation': cation_solvation,
++            'avg_cation_solvation': {},
++            'frames': 1,
++            'ion_pair_analysis': ion_pair_results
+         }
+         
+-        self.logger.info(f"溶剂分布分析完成，分析了 {len(frames)} 帧数据")
++        # 将离子对分析结果直接添加到结果字典中
++        results['cip_count'] = ion_pair_results['cip_count']
++        results['ssip_count'] = ion_pair_results['ssip_count']
++        results['agg_count'] = ion_pair_results['agg_count']
++        results['free_cation_count'] = ion_pair_results['free_cation_count']
++        
++        # 计算百分比
++        total_cations = len(cations)
++        if total_cations > 0:
++            results['cip_percentage'] = (ion_pair_results['cip_count'] / total_cations) * 100
++            results['ssip_percentage'] = (ion_pair_results['ssip_count'] / total_cations) * 100
++            results['agg_percentage'] = (ion_pair_results['agg_count'] / total_cations) * 100
++            results['free_cation_percentage'] = (ion_pair_results['free_cation_count'] / total_cations) * 100
++        else:
++            results['cip_percentage'] = 0
++            results['ssip_percentage'] = 0
++            results['agg_percentage'] = 0
++            results['free_cation_percentage'] = 0
++        
++        self.logger.info(f"溶剂分布分析完成: 平均溶剂化数={avg_solvation:.2f}")
+         return results 
+\ No newline at end of file
+diff --git a/molyte_cursor/src/analysis/visualization.py b/molyte_cursor/src/analysis/visualization.py
+index 24ec14e..f03ec62 100644
+--- a/molyte_cursor/src/analysis/visualization.py
++++ b/molyte_cursor/src/analysis/visualization.py
+@@ -716,4 +716,411 @@ class Visualizer:
+             
+         except Exception as e:
+             self.logger.error(f"创建综合对比面板时出错: {e}")
++            return ""
++    
++    def plot_ion_pair_analysis(self, ion_pair_data: Dict[str, Any], output_filename: str) -> str:
++        """
++        绘制离子对分析图表
++
++        Args:
++            ion_pair_data: 离子对分析数据，包含CIP、SSIP、AGG和自由阳离子的计数和百分比
++            output_filename: 输出文件名
++
++        Returns:
++            生成图像的路径
++        """
++        self.logger.info(f"绘制离子对分析图表: {output_filename}")
++        
++        output_path = os.path.join(self.output_dir, output_filename)
++        
++        try:
++            # 创建图表
++            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
++            
++            # 提取数据
++            pair_types = ['CIP', 'SSIP', 'AGG', '自由阳离子']
++            counts = [
++                ion_pair_data.get('cip_count', 0),
++                ion_pair_data.get('ssip_count', 0),
++                ion_pair_data.get('agg_count', 0),
++                ion_pair_data.get('free_cation_count', 0)
++            ]
++            percentages = [
++                ion_pair_data.get('cip_percentage', 0),
++                ion_pair_data.get('ssip_percentage', 0),
++                ion_pair_data.get('agg_percentage', 0),
++                ion_pair_data.get('free_cation_percentage', 0)
++            ]
++            
++            # 绘制计数柱状图
++            ax1.bar(pair_types, counts, color=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])
++            ax1.set_title('离子对类型计数')
++            ax1.set_xlabel('离子对类型')
++            ax1.set_ylabel('计数')
++            
++            # 添加数值标签
++            for i, count in enumerate(counts):
++                ax1.text(i, count + 0.1, str(count), ha='center')
++            
++            # 绘制百分比饼图
++            wedges, texts, autotexts = ax2.pie(
++                percentages, 
++                labels=pair_types,
++                autopct='%1.1f%%',
++                startangle=90,
++                colors=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
++            )
++            ax2.set_title('离子对类型百分比')
++            ax2.axis('equal')
++            
++            # 设置自动文本的字体大小
++            plt.setp(autotexts, size=10, weight="bold")
++            
++            # 添加图例
++            plt.figlegend(
++                wedges,
++                pair_types,
++                loc="lower center",
++                ncol=4,
++                frameon=False,
++            )
++            
++            # 添加总标题
++            plt.suptitle('离子对分析结果', fontsize=16)
++            
++            # 保存图像
++            plt.tight_layout()
++            plt.savefig(output_path, dpi=self.dpi)
++            self.logger.info(f"离子对分析图表已保存到: {output_path}")
++            plt.close()
++            
++            return output_path
++            
++        except Exception as e:
++            self.logger.error(f"绘制离子对分析图表时出错: {e}")
++            return ""
++    
++    def plot_conductivity_data(self, electrochemical_data: Dict[str, Any], output_filename: str) -> str:
++        """
++        绘制电导率数据图表
++
++        Args:
++            electrochemical_data: 电化学数据
++            output_filename: 输出文件名
++
++        Returns:
++            生成图像的路径
++        """
++        self.logger.info(f"绘制电导率数据图表: {output_filename}")
++        
++        output_path = os.path.join(self.output_dir, output_filename)
++        
++        try:
++            # 创建图表
++            fig, ax1 = plt.figure(figsize=(10, 7)), plt.gca()
++            
++            # 提取数据
++            conductivity = electrochemical_data.get('conductivity_mS_cm', 0)
++            molar_conductivity = electrochemical_data.get('molar_conductivity', 0)
++            concentration = electrochemical_data.get('concentration', 1.0)
++            sample_name = electrochemical_data.get('sample_name', 'Unknown')
++            
++            # 创建条形图
++            bar_width = 0.35
++            index = np.arange(1)
++            
++            # 电导率条形图
++            ax1.bar(index, [conductivity], bar_width, label='电导率', color='#1f77b4')
++            ax1.set_ylabel('电导率 (mS/cm)')
++            ax1.set_title(f'样品 {sample_name} 电导率 (浓度 {concentration} mol/L)')
++            ax1.set_xticks(index)
++            ax1.set_xticklabels([sample_name])
++            
++            # 摩尔电导率条形图
++            ax2 = ax1.twinx()
++            ax2.bar(index + bar_width, [molar_conductivity], bar_width, label='摩尔电导率', color='#ff7f0e')
++            ax2.set_ylabel('摩尔电导率 (S·m²/mol)')
++            
++            # 添加数值标签
++            ax1.text(index[0], conductivity + 0.1, f"{conductivity:.3f}", ha='center')
++            ax2.text(index[0] + bar_width, molar_conductivity + 0.1, f"{molar_conductivity:.3e}", ha='center')
++            
++            # 添加图例
++            lines1, labels1 = ax1.get_legend_handles_labels()
++            lines2, labels2 = ax2.get_legend_handles_labels()
++            ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
++            
++            # 保存图像
++            plt.tight_layout()
++            plt.savefig(output_path, dpi=self.dpi)
++            self.logger.info(f"电导率数据图表已保存到: {output_path}")
++            plt.close()
++            
++            return output_path
++            
++        except Exception as e:
++            self.logger.error(f"绘制电导率数据图表时出错: {e}")
++            return ""
++    
++    def plot_viscosity_data(self, electrochemical_data: Dict[str, Any], output_filename: str) -> str:
++        """
++        绘制粘度数据图表
++
++        Args:
++            electrochemical_data: 电化学数据
++            output_filename: 输出文件名
++
++        Returns:
++            生成图像的路径
++        """
++        self.logger.info(f"绘制粘度数据图表: {output_filename}")
++        
++        output_path = os.path.join(self.output_dir, output_filename)
++        
++        try:
++            # 创建图表
++            fig, ax1 = plt.figure(figsize=(9, 6)), plt.gca()
++            
++            # 提取数据
++            viscosity = electrochemical_data.get('viscosity_mPa_s', 0)
++            diffusion = electrochemical_data.get('diffusion_coeffs', {}).get('D_total', 0)
++            sample_name = electrochemical_data.get('sample_name', 'Unknown')
++            
++            # 创建条形图
++            bar_width = 0.35
++            index = np.arange(1)
++            
++            # 粘度条形图
++            ax1.bar(index, [viscosity], bar_width, label='粘度', color='#2ca02c')
++            ax1.set_ylabel('粘度 (mPa·s)')
++            ax1.set_title(f'样品 {sample_name} 粘度与扩散系数')
++            ax1.set_xticks(index)
++            ax1.set_xticklabels([sample_name])
++            
++            # 扩散系数条形图
++            ax2 = ax1.twinx()
++            ax2.bar(index + bar_width, [diffusion], bar_width, label='扩散系数', color='#d62728')
++            ax2.set_ylabel('扩散系数 (10⁻⁹ m²/s)')
++            
++            # 添加数值标签
++            ax1.text(index[0], viscosity + 0.1, f"{viscosity:.3f}", ha='center')
++            ax2.text(index[0] + bar_width, diffusion + 0.1, f"{diffusion:.3f}", ha='center')
++            
++            # 添加图例
++            lines1, labels1 = ax1.get_legend_handles_labels()
++            lines2, labels2 = ax2.get_legend_handles_labels()
++            ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
++            
++            # 保存图像
++            plt.tight_layout()
++            plt.savefig(output_path, dpi=self.dpi)
++            self.logger.info(f"粘度数据图表已保存到: {output_path}")
++            plt.close()
++            
++            return output_path
++            
++        except Exception as e:
++            self.logger.error(f"绘制粘度数据图表时出错: {e}")
++            return ""
++    
++    def plot_comparative_conductivity(self, electrochemical_data: Dict[str, Dict[str, Any]], 
++                                    output_filename: str) -> str:
++        """
++        绘制比较性电导率数据图表
++
++        Args:
++            electrochemical_data: 多个样品的电化学数据
++            output_filename: 输出文件名
++
++        Returns:
++            生成图像的路径
++        """
++        self.logger.info(f"绘制比较性电导率数据图表: {output_filename}")
++        
++        output_path = os.path.join(self.output_dir, output_filename)
++        
++        try:
++            # 创建图表
++            fig, ax1 = plt.figure(figsize=(12, 8)), plt.gca()
++            
++            # 提取数据
++            samples = []
++            conductivity_values = []
++            molar_conductivity_values = []
++            
++            for sample, data in electrochemical_data.items():
++                samples.append(sample)
++                conductivity_values.append(data.get('conductivity_mS_cm', 0))
++                molar_conductivity_values.append(data.get('molar_conductivity', 0))
++            
++            # 创建条形图
++            bar_width = 0.35
++            index = np.arange(len(samples))
++            
++            # 电导率条形图
++            bars1 = ax1.bar(index, conductivity_values, bar_width, label='电导率', color='#1f77b4')
++            ax1.set_ylabel('电导率 (mS/cm)')
++            ax1.set_title('不同样品电导率比较')
++            ax1.set_xticks(index + bar_width / 2)
++            ax1.set_xticklabels(samples, rotation=45, ha='right')
++            
++            # 摩尔电导率条形图
++            ax2 = ax1.twinx()
++            bars2 = ax2.bar(index + bar_width, molar_conductivity_values, bar_width, label='摩尔电导率', color='#ff7f0e')
++            ax2.set_ylabel('摩尔电导率 (S·m²/mol)')
++            
++            # 添加数值标签
++            for i, (bar, value) in enumerate(zip(bars1, conductivity_values)):
++                height = bar.get_height()
++                ax1.text(bar.get_x() + bar.get_width()/2., height + 0.1,
++                        f"{value:.3f}", ha='center', va='bottom')
++            
++            for i, (bar, value) in enumerate(zip(bars2, molar_conductivity_values)):
++                height = bar.get_height()
++                ax2.text(bar.get_x() + bar.get_width()/2., height + 0.1,
++                        f"{value:.3e}", ha='center', va='bottom')
++            
++            # 添加图例
++            lines1, labels1 = ax1.get_legend_handles_labels()
++            lines2, labels2 = ax2.get_legend_handles_labels()
++            ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
++            
++            # 保存图像
++            plt.tight_layout()
++            plt.savefig(output_path, dpi=self.dpi)
++            self.logger.info(f"比较性电导率数据图表已保存到: {output_path}")
++            plt.close()
++            
++            return output_path
++            
++        except Exception as e:
++            self.logger.error(f"绘制比较性电导率数据图表时出错: {e}")
++            return ""
++    
++    def plot_comparative_viscosity(self, electrochemical_data: Dict[str, Dict[str, Any]], 
++                                 output_filename: str) -> str:
++        """
++        绘制比较性粘度数据图表
++
++        Args:
++            electrochemical_data: 多个样品的电化学数据
++            output_filename: 输出文件名
++
++        Returns:
++            生成图像的路径
++        """
++        self.logger.info(f"绘制比较性粘度数据图表: {output_filename}")
++        
++        output_path = os.path.join(self.output_dir, output_filename)
++        
++        try:
++            # 创建图表
++            fig, ax1 = plt.figure(figsize=(12, 8)), plt.gca()
++            
++            # 提取数据
++            samples = []
++            viscosity_values = []
++            diffusion_values = []
++            
++            for sample, data in electrochemical_data.items():
++                samples.append(sample)
++                viscosity_values.append(data.get('viscosity_mPa_s', 0))
++                diffusion_values.append(data.get('diffusion_coefficients', {}).get('D_total', 0))
++            
++            # 创建条形图
++            bar_width = 0.35
++            index = np.arange(len(samples))
++            
++            # 粘度条形图
++            bars1 = ax1.bar(index, viscosity_values, bar_width, label='粘度', color='#2ca02c')
++            ax1.set_ylabel('粘度 (mPa·s)')
++            ax1.set_title('不同样品粘度比较')
++            ax1.set_xticks(index + bar_width / 2)
++            ax1.set_xticklabels(samples, rotation=45, ha='right')
++            
++            # 扩散系数条形图
++            ax2 = ax1.twinx()
++            bars2 = ax2.bar(index + bar_width, diffusion_values, bar_width, label='扩散系数', color='#d62728')
++            ax2.set_ylabel('扩散系数 (10⁻⁹ m²/s)')
++            
++            # 添加数值标签
++            for i, (bar, value) in enumerate(zip(bars1, viscosity_values)):
++                height = bar.get_height()
++                ax1.text(bar.get_x() + bar.get_width()/2., height + 0.1,
++                        f"{value:.3f}", ha='center', va='bottom')
++            
++            for i, (bar, value) in enumerate(zip(bars2, diffusion_values)):
++                height = bar.get_height()
++                ax2.text(bar.get_x() + bar.get_width()/2., height + 0.1,
++                        f"{value:.3f}", ha='center', va='bottom')
++            
++            # 添加图例
++            lines1, labels1 = ax1.get_legend_handles_labels()
++            lines2, labels2 = ax2.get_legend_handles_labels()
++            ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
++            
++            # 保存图像
++            plt.tight_layout()
++            plt.savefig(output_path, dpi=self.dpi)
++            self.logger.info(f"比较性粘度数据图表已保存到: {output_path}")
++            plt.close()
++            
++            return output_path
++            
++        except Exception as e:
++            self.logger.error(f"绘制比较性粘度数据图表时出错: {e}")
++            return ""
++    
++    def plot_comparative_transference(self, electrochemical_data: Dict[str, Dict[str, Any]], 
++                                    output_filename: str) -> str:
++        """
++        绘制比较性离子迁移数图表
++
++        Args:
++            electrochemical_data: 多个样品的电化学数据
++            output_filename: 输出文件名
++
++        Returns:
++            生成图像的路径
++        """
++        self.logger.info(f"绘制比较性离子迁移数图表: {output_filename}")
++        
++        output_path = os.path.join(self.output_dir, output_filename)
++        
++        try:
++            # 创建图表
++            fig, ax = plt.figure(figsize=(10, 7)), plt.gca()
++            
++            # 提取数据
++            samples = []
++            transference_values = []
++            
++            for sample, data in electrochemical_data.items():
++                samples.append(sample)
++                transference_values.append(data.get('transference_number', 0))
++            
++            # 创建条形图
++            bars = ax.bar(samples, transference_values, color='#9467bd')
++            ax.set_ylabel('阳离子迁移数')
++            ax.set_title('不同样品阳离子迁移数比较')
++            ax.set_ylim(0, 1)  # 迁移数范围在0-1之间
++            ax.axhline(y=0.5, linestyle='--', color='gray', alpha=0.7)  # 添加0.5的参考线
++            
++            # 添加数值标签
++            for bar in bars:
++                height = bar.get_height()
++                ax.text(bar.get_x() + bar.get_width()/2., height + 0.02,
++                       f"{height:.3f}", ha='center', va='bottom')
++            
++            # 保存图像
++            plt.xticks(rotation=45, ha='right')
++            plt.tight_layout()
++            plt.savefig(output_path, dpi=self.dpi)
++            self.logger.info(f"比较性离子迁移数图表已保存到: {output_path}")
++            plt.close()
++            
++            return output_path
++            
++        except Exception as e:
++            self.logger.error(f"绘制比较性离子迁移数图表时出错: {e}")
+             return "" 
+\ No newline at end of file
+-- 
+2.39.5 (Apple Git-154)
+
