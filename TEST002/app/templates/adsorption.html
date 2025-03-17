@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>吸附能计算器</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header>
+        <h1>晶体结构吸附能计算器</h1>
+        <nav>
+            <ul>
+                <li><a href="/">首页</a></li>
+                <li><a href="/adsorption" class="active">吸附能计算</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="adsorption-container">
+            <div class="input-section">
+                <h2>吸附能计算</h2>
+                
+                <form id="adsorption-form">
+                    <div class="form-group">
+                        <label for="structure-file">上传结构文件:</label>
+                        <input type="file" id="structure-file" accept=".cif,.vasp,.poscar">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="miller-index">米勒指数:</label>
+                        <input type="text" id="miller-index" placeholder="1,1,1" value="1,1,1">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="slab-thickness">板层厚度 (Å):</label>
+                        <input type="number" id="slab-thickness" min="1" step="1" value="4">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="vacuum-thickness">真空层厚度 (Å):</label>
+                        <input type="number" id="vacuum-thickness" min="5" step="1" value="15">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="adsorbate-species">吸附物种:</label>
+                        <select id="adsorbate-species">
+                            <option value="H">H</option>
+                            <option value="O">O</option>
+                            <option value="N">N</option>
+                            <option value="C">C</option>
+                            <option value="CO">CO</option>
+                            <option value="CO2">CO2</option>
+                            <option value="OH">OH</option>
+                            <option value="H2O">H2O</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="adsorption-site">吸附位点类型:</label>
+                        <select id="adsorption-site">
+                            <option value="top">顶位 (Top)</option>
+                            <option value="bridge">桥位 (Bridge)</option>
+                            <option value="hollow">空位 (Hollow)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <button type="button" id="calculate-btn">计算吸附能</button>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="visualization-section">
+                <div class="view-controls">
+                    <h3>视图控制</h3>
+                    <div class="view-buttons">
+                        <button id="view-a">a 方向</button>
+                        <button id="view-b">b 方向</button>
+                        <button id="view-c" class="active">c 方向</button>
+                    </div>
+                </div>
+                
+                <div class="visualization-tabs">
+                    <div class="tab-buttons">
+                        <button id="tab-sites" class="active">吸附位点</button>
+                        <button id="tab-structure">吸附结构</button>
+                    </div>
+                    
+                    <div class="tab-content">
+                        <div id="sites-view" class="tab-panel active">
+                            <div class="image-container">
+                                <img id="sites-image" src="" alt="吸附位点图像">
+                                <div class="loading-overlay">
+                                    <div class="spinner"></div>
+                                    <p>加载中...</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="structure-view" class="tab-panel">
+                            <div class="image-container">
+                                <img id="structure-image" src="" alt="吸附结构图像">
+                                <div class="loading-overlay">
+                                    <div class="spinner"></div>
+                                    <p>加载中...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="results-section">
+                <h3>计算结果</h3>
+                <div id="results-container">
+                    <p class="placeholder">计算结果将显示在这里</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2023 晶体结构编辑器</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/adsorption.js') }}"></script>
+</body>
+</html> 

@@ -1,0 +1,1 @@
+请修改_find_adsorption_sites方法，将坐标转换为PeriodicSite对象

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>材料属性分析</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/plotly.js@2.12.1/dist/plotly.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- 确保jQuery在3Dmol.js之前加载 -->
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+    
+    <!-- 使用备用CDN源加载3Dmol.js -->
+    <script src="https://cdn.jsdelivr.net/npm/3dmol@1.8.0/build/3Dmol-min.js"></script>
+    
+    <!-- 添加备用的Three.js库用于3D可视化 -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        /* 自定义样式，使页面更紧凑 */
+        .results-container {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .structure-viewer {
+            height: 400px;
+            position: relative;
+        }
+        .plot-container {
+            height: 300px;
+        }
+        .card {
+            margin-bottom: 15px;
+        }
+        .card-header {
+            padding: 0.5rem 1rem;
+        }
+        .card-body {
+            padding: 0.75rem;
+        }
+        .table-sm td, .table-sm th {
+            padding: 0.25rem 0.5rem;
+        }
+        .mb-3 {
+            margin-bottom: 0.75rem !important;
+        }
+        .mb-4 {
+            margin-bottom: 1rem !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid mt-3">
+        <div class="row">
+            <div class="col-md-12 text-center mb-3">
+                <h1>材料属性分析</h1>
+                <p class="lead">查看材料的结构、能带、密度等信息</p>
+                <nav class="nav nav-pills nav-justified mb-3">
+                    <a class="nav-link" href="{{ url_for('index') }}">吸附能计算</a>
+                    <a class="nav-link active" href="{{ url_for('material_properties') }}">材料属性</a>
+                </nav>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- 左侧：输入参数和计算结果 -->
+            <div class="col-md-4">
+                <!-- 输入参数卡片 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h4>输入参数</h4>
+                    </div>
+                    <div class="card-body">
+                        <form id="properties-form" enctype="multipart/form-data">
+                            <!-- 结构文件上传 -->
+                            <div class="mb-3">
+                                <label for="structure-file" class="form-label">材料结构文件</label>
+                                <input type="file" class="form-control" id="structure-file" name="structure_file" accept=".cif,.vasp,.poscar">
+                                <div class="form-text">
+                                    支持CIF、VASP POSCAR等格式
+                                    <a href="{{ url_for('download_example', filename='Pt_fcc.cif') }}" class="text-primary">下载示例文件 (Pt FCC)</a>
+                                </div>
+                            </div>
+
+                            <!-- 属性选择 -->
+                            <div class="mb-3">
+                                <label class="form-label">选择要计算的属性</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="structure" id="check-structure" name="properties" checked>
+                                    <label class="form-check-label" for="check-structure">
+                                        晶体结构
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="density" id="check-density" name="properties" checked>
+                                    <label class="form-check-label" for="check-density">
+                                        密度
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="volume" id="check-volume" name="properties" checked>
+                                    <label class="form-check-label" for="check-volume">
+                                        晶胞体积
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="min_distance" id="check-min-distance" name="properties" checked>
+                                    <label class="form-check-label" for="check-min-distance">
+                                        最短原子距离和配位数
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="surface_energy" id="check-surface-energy" name="properties">
+                                    <label class="form-check-label" for="check-surface-energy">
+                                        表面能估算 (需要更长时间计算)
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="vasp_input" id="check-vasp-input" name="properties">
+                                    <label class="form-check-label" for="check-vasp-input">
+                                        生成VASP输入文件
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="bandstructure" id="check-bandstructure" name="properties">
+                                    <label class="form-check-label" for="check-bandstructure">
+                                        能带结构 (需要更长时间计算)
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="dos" id="check-dos" name="properties">
+                                    <label class="form-check-label" for="check-dos">
+                                        态密度 (需要更长时间计算)
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- 提交按钮 -->
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-primary" id="calculate-btn">计算属性</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- 计算结果卡片 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h4>计算结果</h4>
+                    </div>
+                    <div class="card-body">
+                        <div id="results-container" class="results-container">
+                            <div class="text-center text-muted py-5">
+                                <p>上传材料结构文件并选择要计算的属性</p>
+                            </div>
+                        </div>
+                        <div id="loading" class="text-center d-none">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">加载中...</span>
+                            </div>
+                            <p class="mt-2">计算中，请稍候...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：结构可视化和分析图表 -->
+            <div class="col-md-8">
+                <!-- 结构可视化卡片 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h4>结构可视化</h4>
+                        <!-- 添加可视化方式选择 -->
+                        <div class="btn-group btn-group-sm float-end" role="group">
+                            <button type="button" class="btn btn-outline-primary active" id="view-3dmol">3Dmol</button>
+                            <button type="button" class="btn btn-outline-primary" id="view-threejs">Three.js</button>
+                            <button type="button" class="btn btn-outline-primary" id="view-table">表格视图</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <!-- 添加调试信息区域 -->
+                        <div id="structure-debug" class="alert alert-info mb-3 d-none">
+                            <h5>调试信息</h5>
+                            <pre id="structure-data-debug"></pre>
+                        </div>
+                        
+                        <!-- 3D结构查看器容器 -->
+                        <div id="structure-viewer" class="structure-viewer">
+                            <div class="text-center text-muted py-5">
+                                <p>上传材料结构文件后将在此处显示3D结构</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Three.js查看器容器 -->
+                        <div id="threejs-viewer" class="structure-viewer d-none">
+                        </div>
+                        
+                        <!-- 表格视图容器 -->
+                        <div id="table-viewer" class="d-none">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped" id="atoms-table">
+                                    <thead>
+                                        <tr>
+                                            <th>#</th>
+                                            <th>元素</th>
+                                            <th>X (Å)</th>
+                                            <th>Y (Å)</th>
+                                            <th>Z (Å)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 能带结构和态密度卡片 -->
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h4>能带结构</h4>
+                            </div>
+                            <div class="card-body">
+                                <div id="bandstructure-plot" class="plot-container">
+                                    <div class="text-center text-muted py-5">
+                                        <p>选择计算能带结构后将在此处显示</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h4>态密度</h4>
+                            </div>
+                            <div class="card-body">
+                                <div id="dos-plot" class="plot-container">
+                                    <div class="text-center text-muted py-5">
+                                        <p>选择计算态密度后将在此处显示</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/plotly.js@2.12.1/dist/plotly.min.js"></script>
+    <script src="{{ url_for('static', filename='js/material_properties.js') }}"></script>
+</body>
+</html> 
