@@ -424,12 +424,24 @@ const ElectrolyteCalculation: React.FC = () => {
       // 无论是否登录，都直接模拟生成输入文件
       console.log('开始生成molyte-cursor输入文件');
       
-      // 模拟生成过程
+      // 创建临时配方数据
+      const tempFormulation = {
+        name: values.formulaName || '临时电解液配方',
+        description: '通过前端自动创建的临时配方',
+        temperature: values.temperature || 298,
+        // 其他可能的字段...
+      };
+      
+      // 这里应该调用后端 API 创建临时配方并获取真实 ID
+      // 为了简化演示，我们只是模拟这个过程
       setTimeout(() => {
+        // 模拟获取后端创建的配方 ID，实际应该从 API 响应中获取
+        const newFormulationId = Math.floor(Math.random() * 1000) + 1; // 生成 1-1000 之间的随机 ID
+        
         setHasInputFile(true);
-        setCurrentFormulationId(currentFormulationId || 999);
+        setCurrentFormulationId(currentFormulationId || newFormulationId);
         message.success('已成功生成molyte-cursor输入文件');
-        console.log('输入文件生成完成，hasInputFile设置为:', true);
+        console.log('输入文件生成完成，formulation_id:', newFormulationId);
         setGenerating(false);
       }, 1500);
     } catch (error) {
@@ -461,11 +473,20 @@ const ElectrolyteCalculation: React.FC = () => {
       
       console.log('提交计算数据:', calculationData);
       
-      // 模拟API调用
-      setTimeout(() => {
-        message.success('计算任务已提交');
-        setSubmitting(false);
-      }, 1500);
+      try {
+        // 调用API提交计算任务
+        const response = await electrolyteService.submitElectrolyteCalculation(calculationData);
+        console.log('计算任务提交响应:', response);
+        message.success('计算任务已提交成功! 正在跳转到任务列表...');
+        
+        // 立即跳转到计算任务列表页面，不使用setTimeout
+        navigate('/calculations', { state: { refresh: true } }); // 跳转并带上刷新标志
+      } catch (apiError) {
+        console.error('API调用失败:', apiError);
+        message.error('提交计算失败，请稍后重试');
+      }
+      
+      setSubmitting(false);
     } catch (error) {
       console.error('提交计算失败:', error);
       message.error('提交计算失败，请稍后重试');
@@ -643,14 +664,14 @@ const ElectrolyteCalculation: React.FC = () => {
       case 1:
         return renderConditionsSettings();
       case 2:
-        return (
+  return (
           <>
             {renderCalculationSelection()}
             
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
               <Space size="large">
-                <Button 
-                  type="primary" 
+          <Button 
+            type="primary" 
                   onClick={generateLammpsInputs} 
                   loading={generating}
                   icon={<SettingOutlined />}
@@ -664,24 +685,24 @@ const ElectrolyteCalculation: React.FC = () => {
                   onClick={downloadInputFile}
                   disabled={!hasInputFile}
                   icon={<DownloadOutlined />}
-                  size="large" 
-                >
+            size="large" 
+          >
                   下载输入文件
-                </Button>
+          </Button>
                 
-                <Button 
+          <Button 
                   type="primary" 
                   onClick={submitCalculation} 
                   loading={submitting}
                   disabled={!hasInputFile}
                   icon={<AppstoreOutlined />}
-                  size="large"
-                >
+            size="large"
+          >
                   提交计算
-                </Button>
-              </Space>
-            </div>
-            
+          </Button>
+        </Space>
+      </div>
+      
             {/* 添加调试信息显示 */}
             <div style={{ marginTop: 24, padding: 16, backgroundColor: '#f5f5f5', borderRadius: 8 }}>
               <Typography.Title level={5}>调试信息</Typography.Title>
@@ -1115,30 +1136,30 @@ const ElectrolyteCalculation: React.FC = () => {
           initialValue={['conductivity', 'diffusion', 'density_viscosity']}
         >
           <Checkbox.Group style={{ width: '100%' }}>
-            <Row gutter={[24, 24]}>
+      <Row gutter={[24, 24]}>
               {calculationOptions.map(option => (
                 <Col span={12} key={option.value}>
                   <Card 
                     hoverable 
                     style={{ height: '100%', transition: 'all 0.3s', borderRadius: 6 }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start' }}>
                       <div style={{ ...styles.iconContainer, color: token.colorPrimary }}>
                         {option.icon}
-                      </div>
-                      <div>
+                </div>
+                <div>
                         <Checkbox value={option.value}>
                           <Title level={5} style={{ margin: 0 }}>{option.label}</Title>
                         </Checkbox>
                         <Paragraph style={{ marginTop: 8, color: token.colorTextSecondary }}>
                           {option.description}
                         </Paragraph>
-                      </div>
-                    </div>
-                  </Card>
-                </Col>
-              ))}
-            </Row>
+                </div>
+              </div>
+            </Card>
+          </Col>
+        ))}
+      </Row>
           </Checkbox.Group>
         </Form.Item>
         
@@ -1259,9 +1280,9 @@ const ElectrolyteCalculation: React.FC = () => {
                   保存配方
                 </Button>
               )}
-            </div>
+              </div>
           </Form>
-        </Card>
+            </Card>
       
         {/* 调试信息按钮 */}
         <Button 

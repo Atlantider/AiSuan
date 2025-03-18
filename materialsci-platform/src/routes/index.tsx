@@ -12,8 +12,9 @@ const NotFound = lazy(() => import('../pages/NotFound'));
 const Documentation = lazy(() => import('../pages/Documentation'));
 const About = lazy(() => import('../pages/About'));
 
-// 计算模块选择页面
+// 计算模块选择页面和计算详情页面
 const CalculationsIndex = lazy(() => import('../pages/calculations/Index'));
+const CalculationDetail = lazy(() => import('../pages/calculations/Detail'));
 
 // 电池计算模块
 const BatteryIndex = lazy(() => import('../pages/battery/Index'));
@@ -89,6 +90,7 @@ const AppRoutes = () => {
         
         {/* 计算模块选择页面 */}
         <Route path="/calculations" element={<CalculationsIndex />} />
+        <Route path="/calculations/:id" element={<CalculationDetail />} />
         
         {/* 电池计算模块 */}
         <Route path="/battery" element={<BatteryIndex />} />

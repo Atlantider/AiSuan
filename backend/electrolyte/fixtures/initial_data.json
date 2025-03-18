@@ -1,0 +1,94 @@
+[
+  {
+    "model": "electrolyte.solvent",
+    "pk": 1,
+    "fields": {
+      "name": "碳酸乙烯酯",
+      "smile": "C1COC(=O)O1",
+      "description": "碳酸乙烯酯(EC)是一种常用的锂离子电池电解液溶剂，具有高介电常数。",
+      "created_at": "2023-01-01T00:00:00Z",
+      "updated_at": "2023-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "electrolyte.solvent",
+    "pk": 2,
+    "fields": {
+      "name": "碳酸二甲酯",
+      "smile": "COC(=O)OC",
+      "description": "碳酸二甲酯(DMC)是一种常用的锂离子电池电解液溶剂，具有低粘度。",
+      "created_at": "2023-01-01T00:00:00Z",
+      "updated_at": "2023-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "electrolyte.solvent",
+    "pk": 3,
+    "fields": {
+      "name": "碳酸丙烯酯",
+      "smile": "CC1COC(=O)O1",
+      "description": "碳酸丙烯酯(PC)是一种常用的锂离子电池电解液溶剂，具有高介电常数和低熔点。",
+      "created_at": "2023-01-01T00:00:00Z",
+      "updated_at": "2023-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "electrolyte.solvent",
+    "pk": 4,
+    "fields": {
+      "name": "碳酸二乙酯",
+      "smile": "CCOC(=O)OCC",
+      "description": "碳酸二乙酯(DEC)是一种常用的锂离子电池电解液溶剂，具有低粘度和低熔点。",
+      "created_at": "2023-01-01T00:00:00Z",
+      "updated_at": "2023-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "electrolyte.salt",
+    "pk": 1,
+    "fields": {
+      "name": "六氟磷酸锂",
+      "cation": "Li+",
+      "anion": "PF6-",
+      "description": "六氟磷酸锂(LiPF6)是锂离子电池中最常用的电解质盐。",
+      "created_at": "2023-01-01T00:00:00Z",
+      "updated_at": "2023-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "electrolyte.salt",
+    "pk": 2,
+    "fields": {
+      "name": "四氟硼酸锂",
+      "cation": "Li+",
+      "anion": "BF4-",
+      "description": "四氟硼酸锂(LiBF4)是一种常用的锂离子电池电解质盐。",
+      "created_at": "2023-01-01T00:00:00Z",
+      "updated_at": "2023-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "electrolyte.salt",
+    "pk": 3,
+    "fields": {
+      "name": "双(三氟甲烷磺酰)亚胺锂",
+      "cation": "Li+",
+      "anion": "TFSI-",
+      "description": "双(三氟甲烷磺酰)亚胺锂(LiTFSI)是一种高稳定性的锂盐，常用于高温应用。",
+      "created_at": "2023-01-01T00:00:00Z",
+      "updated_at": "2023-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "electrolyte.salt",
+    "pk": 4,
+    "fields": {
+      "name": "高氯酸锂",
+      "cation": "Li+",
+      "anion": "ClO4-",
+      "description": "高氯酸锂(LiClO4)是一种常用的锂盐，但有安全隐患。",
+      "created_at": "2023-01-01T00:00:00Z",
+      "updated_at": "2023-01-01T00:00:00Z"
+    }
+  }
+] 

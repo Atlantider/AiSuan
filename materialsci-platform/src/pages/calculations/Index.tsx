@@ -1,18 +1,139 @@
-import React from 'react';
-import { Typography, Row, Col, Card, Button, Space } from 'antd';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Typography, Row, Col, Card, Button, Space, Table, Tag, Spin, message, Tabs, Empty } from 'antd';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   ThunderboltOutlined, 
   ExperimentOutlined, 
   DotChartOutlined,
   LineChartOutlined, 
-  ApartmentOutlined
+  ApartmentOutlined,
+  ReloadOutlined,
+  EyeOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  SyncOutlined,
+  CloseCircleOutlined
 } from '@ant-design/icons';
+import * as electrolyteService from '../../services/electrolyteService';
 
 const { Title, Paragraph } = Typography;
+const { TabPane } = Tabs;
 
 const CalculationsIndex: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState('tasks');
+  const [calculations, setCalculations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // 获取计算任务列表
+  const fetchCalculations = async () => {
+    try {
+      setLoading(true);
+      const response = await electrolyteService.getCalculations();
+      console.log('获取到的计算任务列表:', response.data);
+      setCalculations(response.data || []);
+    } catch (error) {
+      console.error('获取计算任务列表失败:', error);
+      message.error('获取计算任务列表失败，请稍后重试');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 组件加载时获取计算任务列表
+  useEffect(() => {
+    fetchCalculations();
+    
+    // 如果是从其他页面带着刷新标志跳转过来的，自动激活任务列表并刷新
+    if (location.state && (location.state as any).refresh) {
+      setActiveTab('tasks');
+      // 清除state，防止重复刷新
+      navigate(location.pathname, { replace: true });
+    }
+  }, [location]);
+
+  // 表格列配置
+  const columns = [
+    {
+      title: '任务名称',
+      dataIndex: 'name',
+      key: 'name',
+      render: (text: string, record: any) => (
+        <a onClick={() => navigate(`/calculations/${record.id}`)}>{text}</a>
+      )
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status: string) => {
+        let color = 'default';
+        let icon = null;
+        
+        switch (status) {
+          case 'pending':
+            color = 'warning';
+            icon = <ClockCircleOutlined />;
+            break;
+          case 'running':
+            color = 'processing';
+            icon = <SyncOutlined spin />;
+            break;
+          case 'completed':
+            color = 'success';
+            icon = <CheckCircleOutlined />;
+            break;
+          case 'failed':
+            color = 'error';
+            icon = <CloseCircleOutlined />;
+            break;
+          default:
+            break;
+        }
+        
+        return (
+          <Tag color={color} icon={icon}>
+            {status === 'pending' ? '等待中' : 
+             status === 'running' ? '运行中' : 
+             status === 'completed' ? '已完成' : 
+             status === 'failed' ? '失败' : status}
+          </Tag>
+        );
+      }
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'created_at',
+      key: 'created_at',
+      render: (date: string) => new Date(date).toLocaleString('zh-CN')
+    },
+    {
+      title: '操作',
+      key: 'action',
+      render: (text: string, record: any) => (
+        <Space size="small">
+          <Button 
+            type="primary" 
+            size="small" 
+            icon={<EyeOutlined />}
+            onClick={() => navigate(`/calculations/${record.id}`)}
+          >
+            查看
+          </Button>
+          {record.status === 'failed' && (
+            <Button 
+              size="small" 
+              icon={<ReloadOutlined />}
+              onClick={() => handleRestartCalculation(record.id)}
+            >
+              重新计算
+            </Button>
+          )}
+        </Space>
+      )
+    }
+  ];
 
   // 计算模块列表
   const calculationModules = [
@@ -48,45 +169,101 @@ const CalculationsIndex: React.FC = () => {
     }
   ];
 
+  // 重启失败的计算
+  const handleRestartCalculation = async (id: number) => {
+    try {
+      message.loading('正在重启计算...');
+      await electrolyteService.restartCalculation(id);
+      message.success('计算任务已重启');
+      // 重新获取计算任务列表
+      fetchCalculations();
+    } catch (error) {
+      console.error('重启计算失败:', error);
+      message.error('重启计算失败，请稍后重试');
+    }
+  };
+
   return (
     <div>
-      <div style={{ marginBottom: 40 }}>
-        <Title level={2}>选择计算类型</Title>
-        <Paragraph>
-          选择您要进行的计算类型，平台将为您提供专业的计算工具和分析能力。
-          我们的计算模块涵盖材料科学的多个领域，帮助您高效开展研究工作。
-        </Paragraph>
-      </div>
-
-      <Row gutter={[24, 24]}>
-        {calculationModules.map((module, index) => (
-          <Col xs={24} sm={12} md={8} key={index}>
-            <Card 
-              hoverable 
-              style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
-              bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}
-            >
-              <div style={{ textAlign: 'center', marginBottom: 20 }}>
-                {module.icon}
-              </div>
-              <Title level={3} style={{ textAlign: 'center', fontSize: 20 }}>
-                {module.title}
-              </Title>
-              <Paragraph style={{ flexGrow: 1 }}>
-                {module.description}
-              </Paragraph>
+      <Tabs activeKey={activeTab} onChange={setActiveTab}>
+        <TabPane tab="计算任务列表" key="tasks">
+          <div style={{ marginBottom: 20 }}>
+            <Space>
               <Button 
                 type="primary" 
-                block 
-                size="large"
-                onClick={() => navigate(module.path)}
+                icon={<ReloadOutlined />} 
+                onClick={fetchCalculations}
+                loading={loading}
               >
-                进入模块
+                刷新
               </Button>
-            </Card>
-          </Col>
-        ))}
-      </Row>
+              <Button onClick={() => navigate('/battery/electrolyte')}>
+                新建电解液计算
+              </Button>
+            </Space>
+          </div>
+          
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '30px 0' }}>
+              <Spin size="large" />
+            </div>
+          ) : (
+            calculations.length === 0 ? (
+              <Empty 
+                description="暂无计算任务" 
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+              />
+            ) : (
+              <Table 
+                dataSource={calculations} 
+                columns={columns} 
+                rowKey="id"
+                pagination={{ pageSize: 10 }}
+              />
+            )
+          )}
+        </TabPane>
+        
+        <TabPane tab="计算模块" key="modules">
+          <div style={{ marginBottom: 40 }}>
+            <Title level={2}>选择计算类型</Title>
+            <Paragraph>
+              选择您要进行的计算类型，平台将为您提供专业的计算工具和分析能力。
+              我们的计算模块涵盖材料科学的多个领域，帮助您高效开展研究工作。
+            </Paragraph>
+          </div>
+
+          <Row gutter={[24, 24]}>
+            {calculationModules.map((module, index) => (
+              <Col xs={24} sm={12} md={8} key={index}>
+                <Card 
+                  hoverable 
+                  style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+                  bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+                >
+                  <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                    {module.icon}
+                  </div>
+                  <Title level={3} style={{ textAlign: 'center', fontSize: 20 }}>
+                    {module.title}
+                  </Title>
+                  <Paragraph style={{ flexGrow: 1 }}>
+                    {module.description}
+                  </Paragraph>
+                  <Button 
+                    type="primary" 
+                    block 
+                    size="large"
+                    onClick={() => navigate(module.path)}
+                  >
+                    进入模块
+                  </Button>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        </TabPane>
+      </Tabs>
 
       <div style={{ marginTop: 40, textAlign: 'center' }}>
         <Space>
