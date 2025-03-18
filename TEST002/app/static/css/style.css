@@ -1,0 +1,195 @@
+/* 全局样式 */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+    color: #333;
+}
+
+/* 标题样式 */
+h1 {
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+.lead {
+    color: #7f8c8d;
+}
+
+/* 导航样式 */
+.nav-pills .nav-link {
+    color: #3498db;
+    border-radius: 8px;
+    margin: 0 5px;
+    transition: all 0.3s;
+}
+
+.nav-pills .nav-link.active {
+    background-color: #3498db;
+    color: white;
+}
+
+.nav-pills .nav-link:hover:not(.active) {
+    background-color: #e3f2fd;
+}
+
+/* 卡片样式 */
+.card {
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    border: none;
+}
+
+.card-header {
+    background-color: #f1f8ff;
+    border-bottom: 1px solid #e3f2fd;
+    border-radius: 10px 10px 0 0 !important;
+    padding: 15px 20px;
+}
+
+.card-header h4 {
+    margin: 0;
+    color: #3498db;
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+.card-body {
+    padding: 20px;
+}
+
+/* 表单样式 */
+.form-label {
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+.form-control, .form-select {
+    border-radius: 8px;
+    border: 1px solid #ced4da;
+    padding: 10px 15px;
+    transition: all 0.3s;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: #3498db;
+    box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+}
+
+.form-text {
+    color: #7f8c8d;
+    font-size: 0.85rem;
+}
+
+/* 按钮样式 */
+.btn-primary {
+    background-color: #3498db;
+    border-color: #3498db;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-weight: 500;
+    transition: all 0.3s;
+}
+
+.btn-primary:hover {
+    background-color: #2980b9;
+    border-color: #2980b9;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary:active {
+    transform: translateY(0);
+}
+
+/* 结果区域样式 */
+#results-container {
+    min-height: 300px;
+}
+
+#adsorption-energy {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #27ae60;
+}
+
+.table {
+    margin-bottom: 0;
+}
+
+.table th {
+    width: 40%;
+    background-color: #f8f9fa;
+}
+
+/* 加载指示器样式 */
+.spinner-border {
+    width: 3rem;
+    height: 3rem;
+    color: #3498db;
+}
+
+/* 页脚样式 */
+footer {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+}
+
+/* 结构可视化区域 */
+.structure-viewer {
+    min-height: 400px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* 图表容器样式 */
+.plot-container {
+    min-height: 300px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* 结果摘要样式 */
+.results-summary h5 {
+    color: #3498db;
+    font-weight: 600;
+    margin-top: 15px;
+    margin-bottom: 5px;
+}
+
+.results-summary .lead {
+    font-size: 1.2rem;
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+/* 复选框样式 */
+.form-check {
+    margin-bottom: 8px;
+}
+
+.form-check-input:checked {
+    background-color: #3498db;
+    border-color: #3498db;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+    
+    .card {
+        margin-bottom: 15px;
+    }
+    
+    #adsorption-energy {
+        font-size: 1.5rem;
+    }
+    
+    .structure-viewer, .plot-container {
+        min-height: 250px;
+    }
+} 

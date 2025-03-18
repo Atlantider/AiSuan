@@ -15,6 +15,7 @@
     "@react-three/fiber": "^9.0.4",
     "@reduxjs/toolkit": "^2.6.0",
     "@types/three": "^0.174.0",
+    "@types/xlsx": "^0.0.35",
     "3dmol": "^2.4.2",
     "antd": "^5.24.3",
     "axios": "^1.8.2",
@@ -24,7 +25,8 @@
     "react-dom": "^19.0.0",
     "react-redux": "^9.2.0",
     "react-router-dom": "^7.3.0",
-    "three": "^0.174.0"
+    "three": "^0.174.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",

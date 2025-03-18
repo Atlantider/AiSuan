@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>材料表面吸附能计算器</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row">
+            <div class="col-md-12 text-center mb-4">
+                <h1>材料表面吸附能计算器</h1>
+                <p class="lead">基于pymatgen的材料表面吸附能模拟计算工具</p>
+                <nav class="nav nav-pills nav-justified mb-4">
+                    <a class="nav-link active" href="{{ url_for('index') }}">吸附能计算</a>
+                    <a class="nav-link" href="{{ url_for('material_properties') }}">材料属性</a>
+                </nav>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h4>输入参数</h4>
+                    </div>
+                    <div class="card-body">
+                        <form id="calculation-form" enctype="multipart/form-data">
+                            <!-- 结构文件上传 -->
+                            <div class="mb-3">
+                                <label for="structure-file" class="form-label">材料结构文件</label>
+                                <input type="file" class="form-control" id="structure-file" name="structure_file" accept=".cif,.vasp,.poscar">
+                                <div class="form-text">
+                                    支持CIF、VASP POSCAR等格式
+                                    <a href="{{ url_for('download_example', filename='Pt_fcc.cif') }}" class="text-primary">下载示例文件 (Pt FCC)</a>
+                                </div>
+                            </div>
+
+                            <!-- 吸附物种选择 -->
+                            <div class="mb-3">
+                                <label for="species" class="form-label">吸附物种</label>
+                                <select class="form-select" id="species" name="species">
+                                    <option value="" selected disabled>选择吸附物种</option>
+                                    <!-- 将通过JavaScript动态填充 -->
+                                </select>
+                            </div>
+
+                            <!-- Miller指数 -->
+                            <div class="mb-3">
+                                <label for="miller-index" class="form-label">Miller指数</label>
+                                <input type="text" class="form-control" id="miller-index" name="miller_index" placeholder="例如: 1,1,1" value="1,1,1">
+                            </div>
+
+                            <!-- 板层厚度 -->
+                            <div class="mb-3">
+                                <label for="slab-thickness" class="form-label">板层厚度 (原子层)</label>
+                                <input type="number" class="form-control" id="slab-thickness" name="slab_thickness" min="1" max="10" value="4">
+                            </div>
+
+                            <!-- 真空层厚度 -->
+                            <div class="mb-3">
+                                <label for="vacuum-thickness" class="form-label">真空层厚度 (Å)</label>
+                                <input type="number" class="form-control" id="vacuum-thickness" name="vacuum_thickness" min="5" max="30" value="15">
+                            </div>
+
+                            <!-- 吸附位点类型 -->
+                            <div class="mb-3">
+                                <label for="adsorption-site" class="form-label">吸附位点类型</label>
+                                <select class="form-select" id="adsorption-site" name="adsorption_site">
+                                    <option value="top" selected>顶位 (Top)</option>
+                                    <option value="bridge">桥位 (Bridge)</option>
+                                    <option value="hollow">空位 (Hollow)</option>
+                                </select>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100">计算吸附能</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h4>计算结果</h4>
+                    </div>
+                    <div class="card-body">
+                        <div id="results-container">
+                            <div class="text-center py-5" id="initial-message">
+                                <p class="text-muted">请在左侧输入参数并点击"计算吸附能"按钮</p>
+                            </div>
+                            <div id="loading-indicator" class="text-center py-5 d-none">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">计算中...</span>
+                                </div>
+                                <p class="mt-2">计算中，请稍候...</p>
+                            </div>
+                            <div id="results-display" class="d-none">
+                                <div class="alert alert-success mb-4">
+                                    <h5>吸附能:</h5>
+                                    <h3 id="adsorption-energy" class="text-center"></h3>
+                                </div>
+                                
+                                <table class="table table-bordered">
+                                    <tbody>
+                                        <tr>
+                                            <th>表面</th>
+                                            <td id="result-surface"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>吸附物种</th>
+                                            <td id="result-species"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>吸附位点类型</th>
+                                            <td id="result-site-type"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>吸附位点坐标</th>
+                                            <td id="result-site-position"></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div id="error-display" class="d-none">
+                                <div class="alert alert-danger">
+                                    <h5>计算出错</h5>
+                                    <p id="error-message"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 结构可视化区域 -->
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h4>结构可视化</h4>
+                    </div>
+                    <div class="card-body">
+                        <div id="structure-viewer" class="text-center py-5">
+                            <p class="text-muted">计算完成后将显示结构</p>
+                            <p class="small">注：实际应用中可集成3D可视化库如3Dmol.js</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="mt-5 py-3 bg-light text-center">
+        <div class="container">
+            <p>© 2023 材料表面吸附能计算器 | 基于pymatgen开发</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html> 
