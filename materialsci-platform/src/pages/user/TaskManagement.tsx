@@ -406,9 +406,9 @@ const TaskManagement: React.FC = () => {
             <Space size="middle">
               <Button 
                 type="primary" 
-                onClick={() => navigate('/battery/electrolyte')}
+                onClick={() => navigate('/calculations', { state: { activeTab: 'modules' } })}
               >
-                新建电解液计算
+                新建计算任务
               </Button>
               <Button 
                 onClick={() => fetchCalculations()}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Typography, Row, Col, Card, Button, Space, Table, Tag, Spin, message, Tabs, Empty } from 'antd';
+import { Typography, Row, Col, Card, Button, Space, Table, Tag, Spin, message, Tabs, Empty, Dropdown } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   ThunderboltOutlined, 
@@ -12,7 +12,8 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   SyncOutlined,
-  CloseCircleOutlined
+  CloseCircleOutlined,
+  DownOutlined
 } from '@ant-design/icons';
 import * as electrolyteService from '../../services/electrolyteService';
 
@@ -45,10 +46,19 @@ const CalculationsIndex: React.FC = () => {
   useEffect(() => {
     fetchCalculations();
     
-    // 如果是从其他页面带着刷新标志跳转过来的，自动激活任务列表并刷新
-    if (location.state && (location.state as any).refresh) {
-      setActiveTab('tasks');
-      // 清除state，防止重复刷新
+    // 处理传入的state参数
+    if (location.state) {
+      // 如果请求显示计算模块选择页面
+      if ((location.state as any).activeTab) {
+        setActiveTab((location.state as any).activeTab);
+      }
+      
+      // 如果是刷新标志
+      if ((location.state as any).refresh) {
+        setActiveTab('tasks');
+      }
+      
+      // 清除state，防止重复处理
       navigate(location.pathname, { replace: true });
     }
   }, [location]);
@@ -197,9 +207,31 @@ const CalculationsIndex: React.FC = () => {
               >
                 刷新
               </Button>
-              <Button onClick={() => navigate('/battery/electrolyte')}>
-                新建电解液计算
-              </Button>
+              <Dropdown
+                menu={{
+                  items: [
+                    {
+                      key: 'electrolyte',
+                      label: '电解液计算',
+                      onClick: () => navigate('/battery/electrolyte')
+                    },
+                    {
+                      key: 'electrode',
+                      label: '电极材料计算',
+                      onClick: () => navigate('/battery/electrode-material')
+                    },
+                    {
+                      key: 'fullBattery',
+                      label: '全电池系统计算',
+                      onClick: () => navigate('/battery/full-battery')
+                    }
+                  ]
+                }}
+              >
+                <Button>
+                  新建计算任务 <DownOutlined />
+                </Button>
+              </Dropdown>
               <Button onClick={() => navigate('/user/tasks')}>
                 返回任务管理
               </Button>

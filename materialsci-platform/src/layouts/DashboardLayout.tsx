@@ -29,6 +29,7 @@ type MenuItem = {
   icon: React.ReactNode;
   label: string;
   path: string;
+  state?: any;
 };
 
 const DashboardLayout: React.FC = () => {
@@ -75,6 +76,7 @@ const DashboardLayout: React.FC = () => {
       icon: <CalculatorOutlined />,
       label: '新建计算任务',
       path: '/calculations',
+      state: { activeTab: 'modules' }
     },
     {
       key: 'dashboard',
@@ -122,7 +124,7 @@ const DashboardLayout: React.FC = () => {
   const handleMenuClick = (key: string) => {
     const item = menuItems.find(item => item.key === key);
     if (item) {
-      navigate(item.path);
+      navigate(item.path, { state: item.state });
     }
   };
   
