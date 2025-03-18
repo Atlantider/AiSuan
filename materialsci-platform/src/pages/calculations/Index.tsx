@@ -200,6 +200,9 @@ const CalculationsIndex: React.FC = () => {
               <Button onClick={() => navigate('/battery/electrolyte')}>
                 新建电解液计算
               </Button>
+              <Button onClick={() => navigate('/user/tasks')}>
+                返回任务管理
+              </Button>
             </Space>
           </div>
           

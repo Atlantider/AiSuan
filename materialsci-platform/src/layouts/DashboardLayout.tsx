@@ -11,7 +11,8 @@ import {
   SettingOutlined,
   UserOutlined,
   LogoutOutlined,
-  BellOutlined
+  BellOutlined,
+  CalculatorOutlined
 } from '@ant-design/icons';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../store';
@@ -64,16 +65,22 @@ const DashboardLayout: React.FC = () => {
   // 菜单项配置
   const menuItems: MenuItem[] = [
     {
-      key: 'dashboard',
-      icon: <DashboardOutlined />,
-      label: '个人控制台',
-      path: '/user/dashboard',
-    },
-    {
       key: 'tasks',
       icon: <ExperimentOutlined />,
       label: '计算任务管理',
       path: '/user/tasks',
+    },
+    {
+      key: 'calculations',
+      icon: <CalculatorOutlined />,
+      label: '新建计算任务',
+      path: '/calculations',
+    },
+    {
+      key: 'dashboard',
+      icon: <DashboardOutlined />,
+      label: '个人控制台',
+      path: '/user/dashboard',
     },
     {
       key: 'data',

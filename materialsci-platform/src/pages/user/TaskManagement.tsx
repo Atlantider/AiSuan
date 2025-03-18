@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Typography, 
   Table, 
@@ -16,7 +16,10 @@ import {
   DatePicker,
   Select,
   Input,
-  Divider
+  Divider,
+  message,
+  Spin,
+  Empty
 } from 'antd';
 import { 
   CheckCircleOutlined, 
@@ -31,13 +34,14 @@ import {
   PlayCircleOutlined
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import * as electrolyteService from '../../services/electrolyteService';
 
 const { Title, Paragraph } = Typography;
 const { TabPane } = Tabs;
 const { RangePicker } = DatePicker;
 const { Option } = Select;
 
-// 模拟任务数据
+// 保留模拟数据用于界面展示补充
 const mockTasks = [
   {
     id: '1',
@@ -116,6 +120,56 @@ const TaskManagement: React.FC = () => {
   const [activeTab, setActiveTab] = useState('all');
   const [taskDetailVisible, setTaskDetailVisible] = useState(false);
   const [currentTask, setCurrentTask] = useState<any>(null);
+  const [calculations, setCalculations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  
+  // 获取计算任务列表
+  const fetchCalculations = async () => {
+    try {
+      setLoading(true);
+      const response = await electrolyteService.getCalculations();
+      console.log('获取到的计算任务列表:', response.data);
+      setCalculations(response.data || []);
+    } catch (error) {
+      console.error('获取计算任务列表失败:', error);
+      message.error('获取计算任务列表失败，请稍后重试');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 组件加载时获取计算任务列表
+  useEffect(() => {
+    fetchCalculations();
+  }, []);
+  
+  // 合并真实计算任务和模拟数据
+  // 为保持界面丰富，在实际任务较少时，补充模拟数据
+  const getCombinedTasks = () => {
+    const realCalculations = calculations.map(calc => ({
+      id: calc.id,
+      name: calc.name,
+      taskType: '电解液计算',
+      module: 'battery',
+      submodule: 'electrolyte',
+      status: calc.status,
+      priority: 2,
+      createdAt: calc.created_at,
+      startedAt: calc.started_at,
+      completedAt: calc.finished_at,
+      computeTime: calc.started_at && calc.finished_at ? 
+        (new Date(calc.finished_at).getTime() - new Date(calc.started_at).getTime()) / (1000 * 60) : null,
+      progress: calc.status === 'running' ? 50 : 
+               calc.status === 'completed' ? 100 : 
+               calc.status === 'failed' ? 30 : 0,
+      isReal: true  // 标记为真实任务
+    }));
+    
+    // 如果实际任务较少，添加一些模拟数据
+    return realCalculations.length > 0 ? 
+      [...realCalculations, ...mockTasks.map(task => ({...task, isReal: false}))] : 
+      mockTasks.map(task => ({...task, isReal: false}));
+  };
   
   // 获取任务状态标签
   const getStatusTag = (status: string) => {
@@ -157,6 +211,13 @@ const TaskManagement: React.FC = () => {
   
   // 显示任务详情
   const showTaskDetail = (task: any) => {
+    // 如果是真实数据且有ID，跳转到详情页
+    if (task.isReal && task.id) {
+      navigate(`/calculations/${task.id}`);
+      return;
+    }
+    
+    // 否则显示模态框
     setCurrentTask(task);
     setTaskDetailVisible(true);
   };
@@ -236,6 +297,14 @@ const TaskManagement: React.FC = () => {
               onClick={() => console.log('下载结果', record.id)}
             />
           )}
+          {record.isReal && (
+            <Button
+              type="text"
+              onClick={() => navigate(`/calculations/${record.id}`)}
+            >
+              详情
+            </Button>
+          )}
         </Space>
       ),
     },
@@ -243,8 +312,9 @@ const TaskManagement: React.FC = () => {
   
   // 根据标签筛选任务
   const getFilteredTasks = () => {
-    if (activeTab === 'all') return mockTasks;
-    return mockTasks.filter(task => task.status === activeTab);
+    const allTasks = getCombinedTasks();
+    if (activeTab === 'all') return allTasks;
+    return allTasks.filter(task => task.status === activeTab);
   };
   
   return (
@@ -262,7 +332,7 @@ const TaskManagement: React.FC = () => {
           <Card>
             <Statistic 
               title="总任务数" 
-              value={mockTasks.length} 
+              value={getCombinedTasks().length} 
               valueStyle={{ color: '#1C64F2' }}
             />
           </Card>
@@ -271,7 +341,7 @@ const TaskManagement: React.FC = () => {
           <Card>
             <Statistic 
               title="运行中任务" 
-              value={mockTasks.filter(t => t.status === 'running').length}
+              value={getCombinedTasks().filter(t => t.status === 'running').length}
               valueStyle={{ color: '#40A9FF' }}
             />
           </Card>
@@ -280,7 +350,7 @@ const TaskManagement: React.FC = () => {
           <Card>
             <Statistic 
               title="已完成任务" 
-              value={mockTasks.filter(t => t.status === 'completed').length}
+              value={getCombinedTasks().filter(t => t.status === 'completed').length}
               valueStyle={{ color: '#52C41A' }}
             />
           </Card>
@@ -289,7 +359,7 @@ const TaskManagement: React.FC = () => {
           <Card>
             <Statistic 
               title="总计算时长 (小时)" 
-              value={mockTasks.reduce((sum, task) => sum + (task.computeTime || 0), 0) / 60}
+              value={getCombinedTasks().reduce((sum, task) => sum + (task.computeTime || 0), 0) / 60}
               precision={1}
               valueStyle={{ color: '#1C64F2' }}
             />
@@ -333,12 +403,20 @@ const TaskManagement: React.FC = () => {
           activeKey={activeTab} 
           onChange={setActiveTab}
           tabBarExtraContent={
-            <Button 
-              type="primary" 
-              onClick={() => navigate('/calculations')}
-            >
-              新建任务
-            </Button>
+            <Space size="middle">
+              <Button 
+                type="primary" 
+                onClick={() => navigate('/battery/electrolyte')}
+              >
+                新建电解液计算
+              </Button>
+              <Button 
+                onClick={() => fetchCalculations()}
+                loading={loading}
+              >
+                刷新任务列表
+              </Button>
+            </Space>
           }
         >
           <TabPane tab="全部任务" key="all" />
@@ -348,12 +426,19 @@ const TaskManagement: React.FC = () => {
           <TabPane tab="失败/取消" key="failed" />
         </Tabs>
         
-        <Table 
-          columns={columns} 
-          dataSource={getFilteredTasks()} 
-          rowKey="id"
-          pagination={{ pageSize: 10 }}
-        />
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '50px 0' }}>
+            <Spin size="large" />
+            <div style={{ marginTop: 16 }}>正在加载任务数据...</div>
+          </div>
+        ) : (
+          <Table 
+            columns={columns} 
+            dataSource={getFilteredTasks()} 
+            rowKey="id"
+            pagination={{ pageSize: 10 }}
+          />
+        )}
       </Card>
       
       {/* 任务详情弹窗 */}
