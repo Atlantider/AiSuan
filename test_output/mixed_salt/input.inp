@@ -1,0 +1,33 @@
+START
+formulaName: LiPF6-LiBF4混合盐配方
+temperature: 300
+Box_size: 40
+concentration: 1.0
+time_step: 2.0
+equilibration_steps: 500000
+production_steps: 1000000
+cutoff: 12.0
+pressure: 1.0
+
+cations:
+  - name: Li
+    charge: 1
+    concentration: 0.7
+  - name: Li
+    charge: 1
+    concentration: 0.3
+
+anions:
+  - name: PF6
+    charge: -1
+    concentration: 0.7
+  - name: BF4
+    charge: -1
+    concentration: 0.3
+
+solvents:
+  - name: EC
+    smile: C1OC(=O)O1
+    ratio: 1.0
+
+END

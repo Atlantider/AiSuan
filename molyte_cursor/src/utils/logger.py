@@ -93,4 +93,22 @@ class Logger:
         Args:
             message: 日志消息
         """
-        self.logger.debug(message) 
+        self.logger.debug(message)
+
+
+# 添加setup_logger函数，以保持与导入它的代码兼容
+def setup_logger(name='molyte', log_level=logging.INFO, log_file=None):
+    """
+    设置和获取日志记录器
+    
+    Args:
+        name: 日志记录器名称，默认为'molyte'
+        log_level: 日志级别，默认为INFO
+        log_file: 日志文件路径，如果为None则只输出到控制台
+        
+    Returns:
+        配置好的日志记录器对象
+    """
+    # 使用Logger类创建日志记录器，确保兼容性
+    logger_instance = Logger(log_level=log_level, log_file=log_file)
+    return logger_instance.get_logger() 

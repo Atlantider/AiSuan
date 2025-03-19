@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
+from django.db import transaction
 from .models import (
     Solvent, 
     Salt, 
@@ -7,7 +8,8 @@ from .models import (
     FormulationComponent, 
     SimulationParameters,
     Calculation,
-    CalculationResult
+    CalculationResult,
+    InputFile
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -126,6 +128,34 @@ class CreateFormulationSerializer(serializers.Serializer):
     def create(self, validated_data):
         user = self.context['request'].user
         
+        # 检查用户是否是匿名用户，如果是，则使用ID为1的系统用户
+        if user.is_anonymous:
+            # 获取会话ID，用于后续识别当前用户创建的配方
+            request = self.context['request']
+            session_id = request.session.session_key
+            if not session_id:
+                request.session.create()
+                session_id = request.session.session_key
+                
+            # 将会话ID添加到配方名称中，便于后续筛选
+            name = validated_data.get('name', '')
+            validated_data['name'] = f"{name}_{session_id}"
+            
+            try:
+                # 尝试获取ID为1的用户作为系统用户
+                user = User.objects.get(id=1)
+            except User.DoesNotExist:
+                # 尝试获取用户名为system_user的用户
+                try:
+                    user = User.objects.get(username="system_user")
+                except User.DoesNotExist:
+                    # 如果不存在，则创建一个系统用户
+                    user = User.objects.create_user(
+                        username="system_user",
+                        email="system@aisuan.com",
+                        password="defaultpassword"
+                    )
+                
         # 创建电解质配方
         formulation = ElectrolyteFormulation.objects.create(
             name=validated_data['name'],

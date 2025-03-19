@@ -56,7 +56,27 @@ export const getFormulationParameters = (id: number) => {
 
 // 生成输入文件
 export const generateInputFile = (id: number) => {
-  return api.post(`/formulations/${id}/generate_input_file/`);
+  console.log(`调用生成输入文件API: /formulations/${id}/generate_input_file/`);
+  console.log(`参数类型: ${typeof id}, 参数值: ${id}`);
+  
+  // 确保id是数字
+  const formattedId = typeof id === 'string' ? parseInt(id) : id;
+  
+  console.log(`格式化后ID: ${formattedId}, 类型: ${typeof formattedId}`);
+  
+  // 添加详细错误处理
+  return api.post(`/formulations/${formattedId}/generate_input_file/`)
+    .then(response => {
+      console.log('生成输入文件API调用成功:', response);
+      return response;
+    })
+    .catch(error => {
+      console.error('生成输入文件API调用失败:', error);
+      console.error('错误详情:', error.response?.data || error.message || '未知错误');
+      console.error('请求URL:', `/formulations/${formattedId}/generate_input_file/`);
+      console.error('请求方法:', 'POST');
+      throw error;
+    });
 };
 
 // 获取所有计算

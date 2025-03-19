@@ -170,13 +170,6 @@ class ElectrolyteFormulationViewSet(viewsets.ModelViewSet):
         """
         生成LAMMPS输入文件
         """
-        # 添加详细日志
-        logger.info("="*50)
-        logger.info(f"generate_input_file API被调用, pk={pk}")
-        logger.info(f"request.data={request.data}")
-        logger.info(f"request.user={request.user}")
-        logger.info("="*50)
-        
         # 获取请求中的formulation_id，或使用URL中的pk
         formulation_id = pk or request.data.get("formulation_id")
         
@@ -805,3 +798,44 @@ def generate_lammps_inp_file(formulation):
     inp_content += "calculation_types = conductivity,diffusion,density_viscosity\n"
     
     return inp_content
+
+@api_view(['POST'])
+def generate_input_file_api(request, formulation_id):
+    """生成电解液配方的输入文件"""
+    logger.info(f"接收到生成输入文件请求: formulation_id={formulation_id}")
+    
+    try:
+        # 获取配方对象
+        formulation = get_object_or_404(ElectrolyteFormulation, id=formulation_id)
+        
+        # 检查是否已有保存的输入文件
+        try:
+            input_file = InputFile.objects.get(formulation=formulation)
+            logger.info(f"找到已存在的输入文件: {input_file.file_path}")
+            
+            # 生成输入文件
+            inp_content = generate_lammps_inp_file(formulation)
+            
+            # 更新文件内容
+            input_file.content = inp_content
+            input_file.save()
+            
+            logger.info(f"更新输入文件成功: {input_file.file_path}")
+            return Response({"success": True, "message": "输入文件已成功更新", "file_path": input_file.file_path})
+            
+        except InputFile.DoesNotExist:
+            # 生成输入文件
+            inp_content = generate_lammps_inp_file(formulation)
+            
+            # 创建新的输入文件记录
+            input_file = InputFile.objects.create(
+                formulation=formulation,
+                content=inp_content
+            )
+            
+            logger.info(f"创建新输入文件成功: {input_file.file_path}")
+            return Response({"success": True, "message": "输入文件已成功生成", "file_path": input_file.file_path})
+    
+    except Exception as e:
+        logger.error(f"生成输入文件时出错: {str(e)}")
+        return Response({"success": False, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -1,0 +1,20 @@
+# LAMMPS输入文件 - 标准LiPF6/EC配方
+# 由Molyte-Cursor生成
+
+units real
+atom_style full
+timestep 2.0
+pair_style lj/cut/coul/long 12.0
+
+# 溶剂组分:
+# - EC: 1.0
+
+# 盐组分:
+# - LiPF6: 1.0 mol/L
+
+# 模拟参数
+# 温度: 300 K
+# 压力: 1.0 atm
+# 平衡步数: 500000
+# 生产步数: 1000000
+# 截断距离: 12.0 Å
