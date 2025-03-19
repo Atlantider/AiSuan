@@ -935,31 +935,31 @@ const ElectrolyteCalculation: React.FC = () => {
       case 1:
         return renderConditionsSettings();
       case 2:
-        return (
+  return (
           <>
             {renderCalculationSelection()}
             
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
               <Space size="large">
-                <Button 
-                  type="primary" 
+          <Button 
+            type="primary" 
                   onClick={() => {
                     console.log('生成输入文件按钮被点击');
                     generateLammpsInputs();
                   }} 
                   loading={generating}
                   icon={<SettingOutlined />}
-                  size="large" 
-                >
+            size="large" 
+          >
                   生成输入文件
-                </Button>
+          </Button>
                 
-                <Button 
+          <Button 
                   type="default" 
                   onClick={downloadInputFile}
                   disabled={!hasInputFile}
                   icon={<DownloadOutlined />}
-                  size="large"
+            size="large"
                 >
                   下载输入文件
                 </Button>
@@ -973,9 +973,9 @@ const ElectrolyteCalculation: React.FC = () => {
                   size="large"
                 >
                   提交计算
-                </Button>
-              </Space>
-            </div>
+          </Button>
+        </Space>
+      </div>
           </>
         );
       default:
@@ -1409,30 +1409,30 @@ const ElectrolyteCalculation: React.FC = () => {
           initialValue={['conductivity', 'diffusion', 'density_viscosity']}
         >
           <Checkbox.Group style={{ width: '100%' }}>
-            <Row gutter={[24, 24]}>
+      <Row gutter={[24, 24]}>
               {calculationOptions.map(option => (
                 <Col span={12} key={option.value}>
                   <Card 
                     hoverable 
                     style={{ height: '100%', transition: 'all 0.3s', borderRadius: 6 }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start' }}>
                       <div style={{ ...styles.iconContainer, color: token.colorPrimary }}>
                         {option.icon}
-                      </div>
-                      <div>
+                </div>
+                <div>
                         <Checkbox value={option.value}>
                           <Title level={5} style={{ margin: 0 }}>{option.label}</Title>
                         </Checkbox>
                         <Paragraph style={{ marginTop: 8, color: token.colorTextSecondary }}>
                           {option.description}
                         </Paragraph>
-                      </div>
-                    </div>
-                  </Card>
-                </Col>
-              ))}
-            </Row>
+                </div>
+              </div>
+            </Card>
+          </Col>
+        ))}
+      </Row>
           </Checkbox.Group>
         </Form.Item>
         
@@ -1451,7 +1451,7 @@ const ElectrolyteCalculation: React.FC = () => {
         >
           <Input.TextArea placeholder="请输入计算任务的描述信息" rows={2} />
         </Form.Item>
-      </Card>
+            </Card>
     );
   };
 
@@ -1550,13 +1550,13 @@ const ElectrolyteCalculation: React.FC = () => {
               )}
               
               {step < 2 && (
-                <Button 
-                  type="primary" 
+        <Button 
+          type="primary" 
                   icon={<RightOutlined />} 
                   onClick={() => setStep(step + 1)}
-                >
+        >
                   下一步
-                </Button>
+        </Button>
               )}
               
               {step === 2 && (
@@ -1568,7 +1568,7 @@ const ElectrolyteCalculation: React.FC = () => {
                   保存配方
                 </Button>
               )}
-            </div>
+      </div>
           </Form>
         </Card>
       
