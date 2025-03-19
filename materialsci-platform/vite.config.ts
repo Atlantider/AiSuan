@@ -10,5 +10,6 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src')
     }
   },
-  base: '/AiSuan/',
+  // 根据环境变量判断：开发环境使用'/'，生产环境使用'/AiSuan/'
+  base: process.env.NODE_ENV === 'production' ? '/AiSuan/' : '/',
 })
