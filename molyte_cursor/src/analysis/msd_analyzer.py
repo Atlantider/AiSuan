@@ -8,7 +8,7 @@ import os
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
-from typing import Dict, List, Tuple, Optional, Union
+from typing import Dict, List, Tuple, Optional, Union, Any
 import re
 
 class MSDAnalyzer:
@@ -84,7 +84,7 @@ class MSDAnalyzer:
 
             # 设置轴和标签
             ax.set_xlabel('时间 (ps)')
-            ax.set_ylabel('MSD ($\AA^2$)')
+            ax.set_ylabel(r'MSD ($\AA^2$)')
             ax.legend()
             ax.grid(True, linestyle='--', alpha=0.7)
 
@@ -233,7 +233,7 @@ class MSDAnalyzer:
             
             # 设置轴和标签
             ax.set_xlabel('时间 (ps)')
-            ax.set_ylabel('MSD ($\AA^2$)')
+            ax.set_ylabel(r'MSD ($\AA^2$)')
             ax.legend(loc='best')
             ax.grid(True, linestyle='--', alpha=0.7)
             

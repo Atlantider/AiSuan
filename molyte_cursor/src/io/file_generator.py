@@ -3,6 +3,8 @@
 """
 from pathlib import Path
 from ..utils.logger import Logger
+import os
+import yaml
 
 class FileGenerator:
     """文件生成器类"""
@@ -358,4 +360,193 @@ write_dump all custom ${{infile}}_after_nvt.lammpstrj id element mol type x y z 
             lmp_file.write(lmp_content)
             
         self.logger.info(f"Generated LAMMPS input file: {lmp_input_path}")
-        return lmp_input_path 
+        return lmp_input_path
+
+class LAMMPSFileGenerator:
+    """LAMMPS文件生成器类，专门处理LAMMPS相关的输入文件生成"""
+    
+    def __init__(self):
+        """初始化LAMMPS文件生成器"""
+        self.logger = Logger().get_logger()
+    
+    def generate_input_file(self, config, output_path):
+        """生成LAMMPS输入文件
+        
+        Args:
+            config: 配置数据，包含电解质配方等信息
+            output_path: 输出文件路径
+            
+        Returns:
+            生成的输入文件路径
+        """
+        self.logger.info(f"生成LAMMPS输入文件: {output_path}")
+        
+        formulation_name = config.get('formulation_name', 'Electrolyte_Formulation')
+        salts = config.get('salts', [])
+        solvents = config.get('solvents', [])
+        temperature = config.get('temperature', 298)
+        pressure = config.get('pressure', 1.0)
+        time_step = config.get('time_step', 2.0)
+        equilibration_steps = config.get('equilibration_steps', 500000)
+        production_steps = config.get('production_steps', 1000000)
+        cutoff = config.get('cutoff', 12.0)
+        
+        # 创建输出目录
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        
+        # 生成输入文件内容
+        content = [
+            f"# LAMMPS输入文件 - {formulation_name}",
+            f"# 由Molyte-Cursor生成\n",
+            "units real",
+            "atom_style full",
+            f"timestep {time_step}",
+            f"pair_style lj/cut/coul/long {cutoff}\n",
+            "# 溶剂组分:"
+        ]
+        
+        for solvent in solvents:
+            content.append(f"# - {solvent['name']}: {solvent['concentration']}")
+        
+        content.append("\n# 盐组分:")
+        for salt in salts:
+            content.append(f"# - {salt['name']}: {salt['concentration']} mol/L")
+        
+        content.append(f"\n# 模拟参数")
+        content.append(f"# 温度: {temperature} K")
+        content.append(f"# 压力: {pressure} atm")
+        content.append(f"# 平衡步数: {equilibration_steps}")
+        content.append(f"# 生产步数: {production_steps}")
+        content.append(f"# 截断距离: {cutoff} Å")
+        
+        # 写入文件
+        with open(output_path, 'w') as f:
+            f.write('\n'.join(content))
+        
+        self.logger.info(f"成功生成LAMMPS输入文件: {output_path}")
+        return output_path
+        
+    def generate_inp_file(self, config, output_path):
+        """生成INP格式的电解质输入文件
+        
+        Args:
+            config: 配置数据，包含电解质配方等信息
+            output_path: 输出文件路径
+            
+        Returns:
+            生成的INP文件路径
+        """
+        self.logger.info(f"生成INP输入文件: {output_path}")
+        
+        # 提取配置信息
+        formulation_name = config.get('formulation_name', 'Electrolyte_Formulation')
+        salts = config.get('salts', [])
+        solvents = config.get('solvents', [])
+        temperature = config.get('temperature', 298)
+        pressure = config.get('pressure', 1.0)
+        time_step = config.get('time_step', 2.0)
+        equilibration_steps = config.get('equilibration_steps', 500000)
+        production_steps = config.get('production_steps', 1000000)
+        cutoff = config.get('cutoff', 12.0)
+        box_size = config.get('box_size', 50)
+        concentration = config.get('concentration', 1.0)
+        
+        # 创建输出目录
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        
+        # 生成INP文件内容
+        content = [
+            "START",
+            f"formulaName: {formulation_name}",
+            f"temperature: {temperature}",
+            f"Box_size: {box_size}",
+            f"concentration: {concentration}",
+            f"time_step: {time_step}",
+            f"equilibration_steps: {equilibration_steps}",
+            f"production_steps: {production_steps}",
+            f"cutoff: {cutoff}",
+            f"pressure: {pressure}",
+            "",
+            "cations:"
+        ]
+        
+        # 添加阳离子
+        if salts:
+            for salt in salts:
+                content.append(f"  - name: {salt.get('cation', 'Li')}")
+                content.append(f"    charge: 1")
+                content.append(f"    concentration: {salt.get('concentration', 1.0)}")
+        else:
+            content.append("  - name: Li")
+            content.append("    charge: 1")
+            content.append("    concentration: 1.0")
+        
+        # 添加阴离子
+        content.append("")
+        content.append("anions:")
+        if salts:
+            for salt in salts:
+                content.append(f"  - name: {salt.get('anion', 'PF6')}")
+                content.append(f"    charge: -1")
+                content.append(f"    concentration: {salt.get('concentration', 1.0)}")
+        else:
+            content.append("  - name: PF6")
+            content.append("    charge: -1")
+            content.append("    concentration: 1.0")
+        
+        # 添加溶剂
+        content.append("")
+        content.append("solvents:")
+        if solvents:
+            for solvent in solvents:
+                content.append(f"  - name: {solvent.get('name', 'EC')}")
+                content.append(f"    smile: {solvent.get('smile', 'C1OC(=O)O1')}")
+                content.append(f"    ratio: {solvent.get('concentration', 1.0)}")
+        else:
+            content.append("  - name: EC")
+            content.append("    smile: C1OC(=O)O1")
+            content.append("    ratio: 1.0")
+        
+        content.append("")
+        content.append("END")
+        
+        # 写入文件
+        with open(output_path, 'w') as f:
+            f.write('\n'.join(content))
+        
+        self.logger.info(f"成功生成INP输入文件: {output_path}")
+        return output_path
+
+# 添加模块级别的函数，用于从Django后端调用
+def generate_input_files(config, output_dir):
+    """生成输入文件的函数
+    
+    Args:
+        config: 配置数据，包含电解质配方等信息
+        output_dir: 输出目录路径
+        
+    Returns:
+        生成的文件路径字典
+    """
+    logger = Logger().get_logger()
+    logger.info(f"开始生成输入文件，输出目录: {output_dir}")
+    
+    # 确保输出目录存在
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # 初始化文件生成器
+    lammps_generator = LAMMPSFileGenerator()
+    
+    # 生成INP文件
+    inp_path = os.path.join(output_dir, "input.inp")
+    inp_file = lammps_generator.generate_inp_file(config, inp_path)
+    
+    # 生成LAMMPS输入文件
+    lammps_path = os.path.join(output_dir, "input.lammps")
+    lammps_file = lammps_generator.generate_input_file(config, lammps_path)
+    
+    # 返回生成的文件路径
+    return {
+        "inp_file": inp_file,
+        "lammps_file": lammps_file
+    } 

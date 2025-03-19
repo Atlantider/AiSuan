@@ -236,7 +236,7 @@ class RDFAnalyzer:
                        marker='.', markersize=3, color=f'C{idx-1}', label=cn_label)
 
             # 设置轴和标签
-            ax.set_xlabel('$r$($\AA$)')
+            ax.set_xlabel(r'$r$($\AA$)')
             ax.set_xlim(0, 8)
             ax.set_ylim(0)
             ax.set_ylabel('RDF(r)')

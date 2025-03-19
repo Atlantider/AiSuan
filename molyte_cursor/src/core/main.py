@@ -7,6 +7,7 @@ from pathlib import Path
 from ..utils.logger import Logger
 from ..utils.config_loader import ConfigLoader
 from ..io.excel_reader import ExcelReader
+from ..io.file_generator import generate_input_files, LAMMPSFileGenerator
 from ..simulation.simulator import Simulator
 
 def parse_arguments():
@@ -103,6 +104,9 @@ def main():
         import traceback
         logger.error(traceback.format_exc())
         sys.exit(1)
+
+# 导出generate_input_files函数以便Django后端使用
+__all__ = ['main', 'generate_input_files']
 
 if __name__ == "__main__":
     main() 

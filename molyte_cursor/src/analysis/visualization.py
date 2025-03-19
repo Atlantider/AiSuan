@@ -122,7 +122,7 @@ class Visualizer:
                        marker='.', markersize=3, color=f'C{idx-1}', label=cn_label)
 
             # 设置轴和标签
-            ax.set_xlabel('$r$($\AA$)')
+            ax.set_xlabel(r'$r$($\AA$)')
             ax.set_xlim(0, 8)
             ax.set_ylim(0)
             ax.set_ylabel('RDF(r)')
@@ -131,6 +131,9 @@ class Visualizer:
             ax2.set_ylabel('CN')
             ax2.set_ylim(0)
             ax2.legend(loc='upper right')
+
+            # 设置图形标题和标签
+            ax.set_title(f'{system_name} - 径向分布函数(RDF)')
 
             # 保存图像
             plt.tight_layout()
@@ -210,7 +213,7 @@ class Visualizer:
 
             # 设置轴和标签
             ax.set_xlabel('时间 (ps)')
-            ax.set_ylabel('MSD ($\AA^2$)')
+            ax.set_ylabel(r'MSD ($\AA^2$)')
             ax.legend()
             ax.grid(True, linestyle='--', alpha=0.7)
             
@@ -289,7 +292,7 @@ class Visualizer:
             
             # 设置轴和标签
             ax.set_xlabel('时间 (ps)')
-            ax.set_ylabel('MSD ($\AA^2$)')
+            ax.set_ylabel(r'MSD ($\AA^2$)')
             ax.legend(loc='best')
             ax.grid(True, linestyle='--', alpha=0.7)
             
