@@ -3,6 +3,27 @@
 """
 from pathlib import Path
 from .logger import Logger
+import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+# 添加模块级别的函数
+def modify_lmp_charges(lmp_file_path, chg_file_path, output_lmp_file_path):
+    """
+    修改LAMMPS文件中的电荷
+    
+    Args:
+        lmp_file_path: LAMMPS文件路径
+        chg_file_path: 电荷文件路径
+        output_lmp_file_path: 输出LAMMPS文件路径
+        
+    Raises:
+        FileNotFoundError: 当文件不存在时
+        ValueError: 当原子数量与电荷值数量不匹配时
+    """
+    modifier = ChargeModifier()
+    return modifier.modify_lmp_charges(lmp_file_path, chg_file_path, output_lmp_file_path)
 
 class ChargeModifier:
     """电荷修改器类"""
@@ -66,15 +87,19 @@ class ChargeModifier:
         atom_section_end = None
         
         for i, line in enumerate(lmp_contents):
-            if line == "Atoms\n":
-                atom_section_start = i + 2
+            if line.strip() == "Atoms":
+                atom_section_start = i + 2  # 跳过标题行和可能的空行
                 break
                 
         if atom_section_start is not None:
             for i in range(atom_section_start, len(lmp_contents)):
-                if lmp_contents[i].strip() == '':
+                if lmp_contents[i].strip() == '' or lmp_contents[i].strip().startswith('Bonds'):
                     atom_section_end = i
                     break
+        
+        # 如果没有找到结束标记，则使用文件末尾
+        if atom_section_end is None:
+            atom_section_end = len(lmp_contents)
         
         return atom_section_start, atom_section_end
     
@@ -90,13 +115,27 @@ class ChargeModifier:
         Returns:
             修改后的LAMMPS文件内容行列表
         """
+        atom_section = lmp_contents[atom_section_start:atom_section_end]
+        atom_lines = [line for line in atom_section if line.strip() and not line.strip().startswith('#')]
+        
+        if len(atom_lines) != len(chg_values):
+            raise ValueError(f"原子数量({len(atom_lines)})与电荷值数量({len(chg_values)})不匹配")
+        
         modified_section = []
-        for line, new_charge in zip(lmp_contents[atom_section_start:atom_section_end], chg_values):
-            parts = line.split()
-            if parts:
-                parts[3] = str(new_charge)
-                modified_line = ' '.join(parts) + '\n'
-                modified_section.append(modified_line)
+        charge_idx = 0
+        
+        for line in lmp_contents[atom_section_start:atom_section_end]:
+            if line.strip() and not line.strip().startswith('#'):
+                parts = line.split()
+                if len(parts) >= 4:  # 确保行有足够的字段
+                    # LAMMPS文件格式：atom-ID atom-type q x y z
+                    # 电荷通常是第4个字段（索引3）
+                    parts[3] = str(chg_values[charge_idx])
+                    modified_line = ' '.join(parts) + '\n'
+                    modified_section.append(modified_line)
+                    charge_idx += 1
+                else:
+                    modified_section.append(line)
             else:
                 modified_section.append(line)
         
@@ -112,27 +151,43 @@ class ChargeModifier:
             output_lmp_file_path: 输出LAMMPS文件路径
             
         Raises:
-            ValueError: 当原子数量和电荷数量不匹配时
+            FileNotFoundError: 当文件不存在时
+            ValueError: 当原子数量与电荷值数量不匹配时
         """
-        # 读取文件内容
-        lmp_contents = self.read_file(lmp_file_path)
-        chg_contents = self.read_file(chg_file_path)
-        
-        # 提取电荷值
-        chg_values = self.extract_charges(chg_contents)
-        
-        # 查找原子部分
-        atom_section_start, atom_section_end = self.find_atoms_section(lmp_contents)
-        
-        # 确保原子数量与电荷数量匹配
-        if len(lmp_contents[atom_section_start:atom_section_end]) != len(chg_values):
-            raise ValueError("Number of atoms and charges do not match.")
-        
-        # 修改LAMMPS文件中的电荷
-        modified_lmp_contents = self.modify_charges_in_lmp(
-            lmp_contents, atom_section_start, atom_section_end, chg_values
-        )
-        
-        # 写入修改后的LAMMPS文件
-        self.write_file(output_lmp_file_path, modified_lmp_contents)
-        self.logger.info(f"Modified charges in {output_lmp_file_path}") 
+        try:
+            # 检查文件是否存在
+            if not os.path.exists(lmp_file_path):
+                raise FileNotFoundError(f"LAMMPS文件不存在: {lmp_file_path}")
+            
+            if not os.path.exists(chg_file_path):
+                raise FileNotFoundError(f"电荷文件不存在: {chg_file_path}")
+            
+            # 读取文件内容
+            lmp_contents = self.read_file(lmp_file_path)
+            chg_contents = self.read_file(chg_file_path)
+            
+            # 提取电荷值
+            chg_values = self.extract_charges(chg_contents)
+            
+            if not chg_values:
+                raise ValueError(f"从电荷文件中未能提取到有效的电荷值")
+            
+            # 查找原子部分位置
+            atom_section_start, atom_section_end = self.find_atoms_section(lmp_contents)
+            
+            if atom_section_start is None or atom_section_end is None:
+                raise ValueError(f"在LAMMPS文件中未能找到Atoms部分")
+            
+            # 修改电荷值
+            modified_lmp_contents = self.modify_charges_in_lmp(
+                lmp_contents, atom_section_start, atom_section_end, chg_values
+            )
+            
+            # 写入修改后的内容到新文件
+            self.write_file(output_lmp_file_path, modified_lmp_contents)
+            
+            self.logger.info(f"成功修改LAMMPS文件中的电荷值，已保存到: {output_lmp_file_path}")
+            
+        except Exception as e:
+            self.logger.error(f"修改LAMMPS文件中的电荷值时出错: {str(e)}")
+            raise 

@@ -15,13 +15,47 @@ import {
 import * as electrolyteService from '../../services/electrolyteService';
 
 const { Title, Paragraph } = Typography;
-const { TabPane } = Tabs;
+
+// 创建Tab项类型
+type TabItem = {
+  key: string;
+  label: React.ReactNode;
+  children: React.ReactNode;
+};
+
+// 定义计算任务类型
+interface ICalculation {
+  id: number;
+  name: string;
+  description: string;
+  status: string;
+  created_at: string;
+  started_at?: string;
+  finished_at?: string;
+  formulation: number;
+  slurm_job_id?: string;
+  error_message?: string | Record<string, any>;
+}
+
+// 定义计算结果类型
+interface ICalculationResult {
+  ionic_conductivity?: number;
+  density?: number;
+  viscosity?: number;
+  molar_conductivity?: number;
+  diffusion_coefficients?: {
+    cation?: number;
+    anion?: number;
+    overall?: number;
+  };
+  transport_number?: number;
+}
 
 const CalculationDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [calculation, setCalculation] = useState<any>(null);
-  const [calculationResult, setCalculationResult] = useState<any>(null);
+  const [calculation, setCalculation] = useState<ICalculation | null>(null);
+  const [calculationResult, setCalculationResult] = useState<ICalculationResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [resultLoading, setResultLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('info');
@@ -31,54 +65,54 @@ const CalculationDetail: React.FC = () => {
   const fetchCalculation = async () => {
     if (!id) return;
     
+    setLoading(true);
     try {
       const response = await electrolyteService.getCalculation(Number(id));
       setCalculation(response.data);
       
-      // 如果计算任务状态为running或pending，开始轮询
-      if (response.data?.status === 'running' || response.data?.status === 'pending') {
-        startPolling();
-      } else if (response.data?.status === 'completed') {
-        // 如果计算已完成，获取结果
+      // 如果计算已完成，获取结果
+      if (response.data.status === 'completed') {
         fetchCalculationResult();
+      }
+      // 如果计算正在运行中，启动轮询
+      else if (response.data.status === 'running' || response.data.status === 'submitted' || response.data.status === 'queued') {
+        startPolling();
       }
     } catch (error) {
       console.error('获取计算任务详情失败:', error);
-      message.error('获取计算任务详情失败，请稍后重试');
+      message.error('获取计算任务详情失败');
     } finally {
       setLoading(false);
     }
   };
 
-  // 获取计算结果
-  const fetchCalculationResult = async () => {
-    if (!id) return;
-    
-    try {
-      setResultLoading(true);
-      const response = await electrolyteService.getCalculationResults(id);
-      setCalculationResult(response.data);
-    } catch (error) {
-      console.error('获取计算结果失败:', error);
-      message.error('获取计算结果失败，请稍后重试');
-    } finally {
-      setResultLoading(false);
+  // 停止轮询
+  const stopPolling = () => {
+    if (pollingTimer) {
+      clearInterval(pollingTimer);
+      setPollingTimer(null);
     }
   };
 
-  // 轮询计算状态
+  // 开始轮询
   const startPolling = () => {
-    if (pollingTimer) {
-      clearInterval(pollingTimer);
-    }
-    
+    // 清除已有的轮询
+    stopPolling();
+    // 启动新的轮询
+    pollTaskStatus();
+  };
+
+  // 轮询计算状态
+  const pollTaskStatus = () => {
     const timer = setInterval(async () => {
+      if (!id) return;
+      
       try {
-        const response = await electrolyteService.getCalculationStatus(id!);
+        const response = await electrolyteService.getCalculationStatus(id);
         const newStatus = response.data?.status;
         
         // 更新计算状态
-        setCalculation(prev => ({ ...prev, status: newStatus }));
+        setCalculation((prev: ICalculation | null) => prev ? ({ ...prev, status: newStatus }) : null);
         
         // 如果计算已完成或失败，停止轮询并获取结果
         if (newStatus === 'completed' || newStatus === 'failed') {
@@ -96,31 +130,65 @@ const CalculationDetail: React.FC = () => {
     setPollingTimer(timer);
   };
 
-  // 停止轮询
-  const stopPolling = () => {
-    if (pollingTimer) {
-      clearInterval(pollingTimer);
-      setPollingTimer(null);
+  // 获取计算结果
+  const fetchCalculationResult = async () => {
+    if (!id) return;
+    
+    setResultLoading(true);
+    try {
+      const response = await electrolyteService.getCalculationResults(id);
+      setCalculationResult((prev: ICalculationResult | null) => {
+        if (prev && JSON.stringify(prev) === JSON.stringify(response.data)) {
+          return prev;
+        }
+        return response.data;
+      });
+    } catch (error) {
+      console.error('获取计算结果出错:', error);
+      message.error('获取计算结果失败，请重试');
+    } finally {
+      setResultLoading(false);
     }
   };
 
   // 重启计算
   const handleRestart = async () => {
-    if (!id) return;
+    if (!id || !calculation) return;
     
     try {
-      message.loading('正在重启计算...');
-      await electrolyteService.restartCalculation(Number(id));
-      message.success('计算任务已重启');
+      const response = await electrolyteService.restartCalculation(Number(id));
+      message.success('重启计算成功');
+      // 更新计算状态
+      if (response.data && response.data.status) {
+        const newStatus = response.data.status;
+        setCalculation((prev: ICalculation | null) => prev ? ({ ...prev, status: newStatus }) : null);
+      }
+      // 重启成功后导航到任务列表页面
+      setTimeout(() => {
+        navigate('/user/tasks');
+      }, 1500); // 延迟1.5秒跳转，让用户先看到成功消息
+    } catch (error) {
+      console.error('重启计算失败:', error);
+      message.error('重启计算失败，请稍后重试');
+    }
+  };
+
+  // 手动提交计算
+  const handleSubmit = async () => {
+    if (!id || !calculation) return;
+    
+    try {
+      await electrolyteService.submitCalculation(Number(id));
+      message.success('提交计算成功');
       
       // 更新计算状态为pending
-      setCalculation(prev => ({ ...prev, status: 'pending' }));
+      setCalculation((prev: ICalculation | null) => prev ? ({ ...prev, status: 'pending' }) : null);
       
       // 开始轮询状态
       startPolling();
     } catch (error) {
-      console.error('重启计算失败:', error);
-      message.error('重启计算失败，请稍后重试');
+      console.error('提交计算失败:', error);
+      message.error('提交计算失败，请稍后重试');
     }
   };
 
@@ -138,104 +206,161 @@ const CalculationDetail: React.FC = () => {
 
   // 渲染计算状态标签
   const renderStatusTag = (status: string) => {
-    let color = 'default';
-    let icon = null;
-    let text = status;
-    
     switch (status) {
       case 'pending':
-        color = 'warning';
-        icon = <ClockCircleOutlined />;
-        text = '等待中';
-        break;
+        return <Tag color="blue" icon={<ClockCircleOutlined />}>等待提交</Tag>;
+      case 'submitted':
+        return <Tag color="orange" icon={<ClockCircleOutlined />}>已提交</Tag>;
+      case 'queued':
+        return <Tag color="gold" icon={<ClockCircleOutlined />}>排队中</Tag>;
       case 'running':
-        color = 'processing';
-        icon = <SyncOutlined spin />;
-        text = '运行中';
-        break;
+        return <Tag color="processing" icon={<SyncOutlined spin />}>运行中</Tag>;
       case 'completed':
-        color = 'success';
-        icon = <CheckCircleOutlined />;
-        text = '已完成';
-        break;
+        return <Tag color="success" icon={<CheckCircleOutlined />}>已完成</Tag>;
       case 'failed':
-        color = 'error';
-        icon = <CloseCircleOutlined />;
-        text = '失败';
-        break;
+        return <Tag color="error" icon={<CloseCircleOutlined />}>失败</Tag>;
+      case 'cancelled':
+        return <Tag color="default" icon={<CloseCircleOutlined />}>已取消</Tag>;
       default:
-        break;
+        return <Tag color="default">{status}</Tag>;
     }
-    
-    return <Tag color={color} icon={icon}>{text}</Tag>;
   };
 
-  if (loading) {
+  // 获取计算结果Tab内容
+  const getResultTabContent = () => {
+    if (!calculation) {
+      return <div>加载中...</div>;
+    }
+    
+    if (calculation.status !== 'completed') {
+      return (
+        <Result
+          icon={calculation.status === 'failed' ? <CloseCircleOutlined /> : <ClockCircleOutlined />}
+          title={calculation.status === 'failed' ? '计算失败' : '计算未完成'}
+          subTitle={calculation.status === 'failed' ? '您可以尝试重新启动计算' : '请等待计算完成后查看结果'}
+          extra={calculation.status === 'failed' && (
+            <Button type="primary" onClick={handleRestart}>
+              重启计算
+            </Button>
+          )}
+        />
+      );
+    }
+    
+    if (resultLoading) {
+      return (
+        <div style={{ textAlign: 'center', padding: '30px 0' }}>
+          <Spin size="large" tip="加载计算结果..." />
+        </div>
+      );
+    }
+    
+    if (!calculationResult) {
+      return (
+        <Result
+          status="warning"
+          title="未找到计算结果"
+          subTitle="系统找不到此计算任务的结果数据"
+          extra={
+            <Button type="primary" onClick={fetchCalculationResult}>
+              重新获取
+            </Button>
+          }
+        />
+      );
+    }
+    
+    // 安全访问扩散系数，避免undefined
+    const diffCoef = calculationResult.diffusion_coefficients || {};
+    
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
-        <Spin size="large" tip="加载中..." />
-      </div>
-    );
-  }
-
-  if (!calculation) {
-    return (
-      <Result
-        status="404"
-        title="计算任务不存在"
-        subTitle="您请求的计算任务不存在或已被删除"
-        extra={
-          <Button type="primary" onClick={() => navigate('/calculations')}>
-            返回计算任务列表
-          </Button>
-        }
-      />
-    );
-  }
-
-  return (
-    <div style={{ padding: '24px 0' }}>
-      <div style={{ marginBottom: 16 }}>
-        <Button 
-          icon={<ArrowLeftOutlined />} 
-          onClick={() => navigate('/calculations')}
-        >
-          返回计算任务列表
-        </Button>
-      </div>
-      
-      <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <div>
-            <Title level={3} style={{ marginBottom: 8 }}>{calculation.name}</Title>
-            <Space>
-              {renderStatusTag(calculation.status)}
-              <span>创建时间: {new Date(calculation.created_at).toLocaleString('zh-CN')}</span>
-            </Space>
-          </div>
-          
+      <div>
+        <Card title="电解液性能参数" style={{ marginBottom: 16 }}>
+          <Descriptions bordered column={2}>
+            <Descriptions.Item label="离子电导率 (mS/cm)">
+              {calculationResult.ionic_conductivity?.toFixed(4) || '暂无数据'}
+            </Descriptions.Item>
+            <Descriptions.Item label="密度 (g/cm³)">
+              {calculationResult.density?.toFixed(4) || '暂无数据'}
+            </Descriptions.Item>
+            <Descriptions.Item label="粘度 (mPa·s)">
+              {calculationResult.viscosity?.toFixed(4) || '暂无数据'}
+            </Descriptions.Item>
+            <Descriptions.Item label="摩尔电导率 (S·cm²/mol)">
+              {calculationResult.molar_conductivity?.toFixed(4) || '暂无数据'}
+            </Descriptions.Item>
+          </Descriptions>
+        </Card>
+        
+        <Card title="扩散系数" style={{ marginBottom: 16 }}>
+          <Descriptions bordered column={2}>
+            <Descriptions.Item label="阳离子扩散系数 (10⁻¹⁰ m²/s)">
+              {(diffCoef.cation !== undefined ? (diffCoef.cation * 1e10).toFixed(4) : '暂无数据')}
+            </Descriptions.Item>
+            <Descriptions.Item label="阴离子扩散系数 (10⁻¹⁰ m²/s)">
+              {(diffCoef.anion !== undefined ? (diffCoef.anion * 1e10).toFixed(4) : '暂无数据')}
+            </Descriptions.Item>
+            <Descriptions.Item label="总体扩散系数 (10⁻¹⁰ m²/s)">
+              {(diffCoef.overall !== undefined ? (diffCoef.overall * 1e10).toFixed(4) : '暂无数据')}
+            </Descriptions.Item>
+            <Descriptions.Item label="迁移数">
+              {calculationResult.transport_number?.toFixed(4) || '暂无数据'}
+            </Descriptions.Item>
+          </Descriptions>
+        </Card>
+        
+        <div style={{ marginTop: 16 }}>
           <Space>
-            {calculation.status === 'failed' && (
-              <Button 
-                type="primary" 
-                icon={<ReloadOutlined />} 
-                onClick={handleRestart}
-              >
-                重启计算
-              </Button>
-            )}
+            <Button 
+              type="primary" 
+              icon={<BarChartOutlined />}
+              onClick={() => setActiveTab('visualization')}
+            >
+              查看可视化结果
+            </Button>
+            <Button 
+              icon={<FileTextOutlined />}
+              onClick={() => setActiveTab('log')}
+            >
+              查看计算日志
+            </Button>
+            <Button 
+              icon={<DownloadOutlined />}
+              onClick={() => message.info('下载功能即将上线')}
+            >
+              下载计算数据
+            </Button>
           </Space>
         </div>
-        
-        <Tabs activeKey={activeTab} onChange={setActiveTab}>
-          <TabPane tab="基本信息" key="info">
+      </div>
+    );
+  };
+
+  // 生成Tab项
+  const getTabItems = (): TabItem[] => {
+    if (!calculation) {
+      return [];
+    }
+    
+    const items: TabItem[] = [
+      {
+        key: 'info',
+        label: '基本信息',
+        children: (
+          <>
             <Descriptions bordered column={2}>
               <Descriptions.Item label="ID">{calculation.id}</Descriptions.Item>
               <Descriptions.Item label="状态">{renderStatusTag(calculation.status)}</Descriptions.Item>
-              <Descriptions.Item label="名称">{calculation.name}</Descriptions.Item>
+              <Descriptions.Item label="名称">{calculation.name || '-'}</Descriptions.Item>
               <Descriptions.Item label="描述">{calculation.description || '无'}</Descriptions.Item>
-              <Descriptions.Item label="创建时间">{new Date(calculation.created_at).toLocaleString('zh-CN')}</Descriptions.Item>
-              <Descriptions.Item label="配方ID">{calculation.formulation}</Descriptions.Item>
+              <Descriptions.Item label="创建时间">
+                {calculation.created_at ? new Date(calculation.created_at).toLocaleString('zh-CN') : '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="配方ID">
+                {typeof calculation.formulation === 'object' 
+                  ? JSON.stringify(calculation.formulation)
+                  : (calculation.formulation || '-')}
+              </Descriptions.Item>
               {calculation.started_at && (
                 <Descriptions.Item label="开始计算时间">
                   {new Date(calculation.started_at).toLocaleString('zh-CN')}
@@ -248,7 +373,9 @@ const CalculationDetail: React.FC = () => {
               )}
               {calculation.error_message && (
                 <Descriptions.Item label="错误信息" span={2}>
-                  {calculation.error_message}
+                  {typeof calculation.error_message === 'object' 
+                    ? JSON.stringify(calculation.error_message, null, 2)
+                    : calculation.error_message}
                 </Descriptions.Item>
               )}
             </Descriptions>
@@ -257,7 +384,7 @@ const CalculationDetail: React.FC = () => {
             
             <Timeline mode="left">
               <Timeline.Item color="blue">
-                创建计算任务 - {new Date(calculation.created_at).toLocaleString('zh-CN')}
+                创建计算任务 - {calculation.created_at ? new Date(calculation.created_at).toLocaleString('zh-CN') : '-'}
               </Timeline.Item>
               {calculation.started_at && (
                 <Timeline.Item color="blue">
@@ -278,115 +405,105 @@ const CalculationDetail: React.FC = () => {
                 </Timeline.Item>
               )}
             </Timeline>
-          </TabPane>
+          </>
+        )
+      },
+      {
+        key: 'result',
+        label: '计算结果',
+        children: getResultTabContent()
+      },
+      {
+        key: 'visualization',
+        label: '可视化结果',
+        children: (
+          <Result
+            icon={<BarChartOutlined />}
+            title="可视化功能正在开发中"
+            subTitle="请期待后续版本更新"
+          />
+        )
+      },
+      {
+        key: 'log',
+        label: '计算日志',
+        children: (
+          <Result
+            icon={<FileTextOutlined />}
+            title="计算日志功能正在开发中"
+            subTitle="请期待后续版本更新"
+          />
+        )
+      }
+    ];
+    
+    return items;
+  };
+
+  // 渲染页面
+  return (
+    <div style={{ padding: 24, backgroundColor: '#f5f7fa', minHeight: 'calc(100vh - 64px)' }}>
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '50px 0' }}>
+          <Spin size="large" tip="加载计算任务详情..." />
+        </div>
+      ) : !calculation ? (
+        <Result
+          status="error"
+          title="未找到计算任务"
+          subTitle={`无法找到ID为 ${id} 的计算任务`}
+          extra={
+            <Button type="primary" onClick={() => navigate('/user/tasks')}>
+              返回计算任务列表
+            </Button>
+          }
+        />
+      ) : (
+        <>
+          <div style={{ marginBottom: 16 }}>
+            <Button 
+              type="primary" 
+              icon={<ArrowLeftOutlined />} 
+              onClick={() => navigate('/user/tasks')}
+            >
+              返回计算任务列表
+            </Button>
+          </div>
           
-          <TabPane tab="计算结果" key="result">
-            {calculation.status !== 'completed' ? (
-              <Result
-                icon={calculation.status === 'failed' ? <CloseCircleOutlined /> : <ClockCircleOutlined />}
-                title={calculation.status === 'failed' ? '计算失败' : '计算未完成'}
-                subTitle={calculation.status === 'failed' ? '您可以尝试重新启动计算' : '请等待计算完成后查看结果'}
-                extra={calculation.status === 'failed' && (
-                  <Button type="primary" onClick={handleRestart}>
+          <Card className="detail-card" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.1)', borderRadius: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+              <div>
+                <Title level={3} style={{ marginBottom: 8, color: '#1890ff' }}>{calculation.name || '-'}</Title>
+                <Space>
+                  {renderStatusTag(calculation.status)}
+                  <span>创建时间: {calculation.created_at ? new Date(calculation.created_at).toLocaleString('zh-CN') : '-'}</span>
+                </Space>
+              </div>
+              
+              <Space>
+                {calculation.status === 'failed' && (
+                  <Button 
+                    type="primary" 
+                    danger
+                    icon={<ReloadOutlined />} 
+                    onClick={handleRestart}
+                  >
                     重启计算
                   </Button>
                 )}
-              />
-            ) : resultLoading ? (
-              <div style={{ textAlign: 'center', padding: '30px 0' }}>
-                <Spin size="large" tip="加载计算结果..." />
-              </div>
-            ) : !calculationResult ? (
-              <Result
-                status="warning"
-                title="未找到计算结果"
-                subTitle="系统找不到此计算任务的结果数据"
-                extra={
-                  <Button type="primary" onClick={fetchCalculationResult}>
-                    重新获取
-                  </Button>
-                }
-              />
-            ) : (
-              <div>
-                <Card title="电解液性能参数" style={{ marginBottom: 16 }}>
-                  <Descriptions bordered column={2}>
-                    <Descriptions.Item label="离子电导率 (mS/cm)">
-                      {calculationResult.ionic_conductivity?.toFixed(4) || '暂无数据'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="密度 (g/cm³)">
-                      {calculationResult.density?.toFixed(4) || '暂无数据'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="粘度 (mPa·s)">
-                      {calculationResult.viscosity?.toFixed(4) || '暂无数据'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="摩尔电导率 (S·cm²/mol)">
-                      {calculationResult.molar_conductivity?.toFixed(4) || '暂无数据'}
-                    </Descriptions.Item>
-                  </Descriptions>
-                </Card>
-                
-                <Card title="扩散系数" style={{ marginBottom: 16 }}>
-                  <Descriptions bordered column={2}>
-                    <Descriptions.Item label="阳离子扩散系数 (10⁻¹⁰ m²/s)">
-                      {(calculationResult.diffusion_coefficients?.cation * 1e10)?.toFixed(4) || '暂无数据'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="阴离子扩散系数 (10⁻¹⁰ m²/s)">
-                      {(calculationResult.diffusion_coefficients?.anion * 1e10)?.toFixed(4) || '暂无数据'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="总体扩散系数 (10⁻¹⁰ m²/s)">
-                      {(calculationResult.diffusion_coefficients?.overall * 1e10)?.toFixed(4) || '暂无数据'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="迁移数">
-                      {calculationResult.transport_number?.toFixed(4) || '暂无数据'}
-                    </Descriptions.Item>
-                  </Descriptions>
-                </Card>
-                
-                <div style={{ marginTop: 16 }}>
-                  <Space>
-                    <Button 
-                      type="primary" 
-                      icon={<BarChartOutlined />}
-                      onClick={() => setActiveTab('visualization')}
-                    >
-                      查看可视化结果
-                    </Button>
-                    <Button 
-                      icon={<FileTextOutlined />}
-                      onClick={() => setActiveTab('log')}
-                    >
-                      查看计算日志
-                    </Button>
-                    <Button 
-                      icon={<DownloadOutlined />}
-                      onClick={() => message.info('下载功能即将上线')}
-                    >
-                      下载计算数据
-                    </Button>
-                  </Space>
-                </div>
-              </div>
-            )}
-          </TabPane>
-          
-          <TabPane tab="可视化结果" key="visualization">
-            <Result
-              icon={<BarChartOutlined />}
-              title="可视化功能正在开发中"
-              subTitle="请期待后续版本更新"
+              </Space>
+            </div>
+            
+            <Tabs 
+              activeKey={activeTab} 
+              onChange={setActiveTab}
+              items={getTabItems()}
+              className="detail-tabs"
+              type="card"
             />
-          </TabPane>
-          
-          <TabPane tab="计算日志" key="log">
-            <Result
-              icon={<FileTextOutlined />}
-              title="计算日志功能正在开发中"
-              subTitle="请期待后续版本更新"
-            />
-          </TabPane>
-        </Tabs>
-      </Card>
+          </Card>
+        </>
+      )}
     </div>
   );
 };

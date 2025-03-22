@@ -369,12 +369,15 @@ class LAMMPSFileGenerator:
         """初始化LAMMPS文件生成器"""
         self.logger = Logger().get_logger()
     
-    def generate_input_file(self, config, output_path):
+    def generate_input_file(self, config, output_path, data_file=None, topology_files=None, forcefield_files=None):
         """生成LAMMPS输入文件
         
         Args:
             config: 配置数据，包含电解质配方等信息
             output_path: 输出文件路径
+            data_file: Packmol生成的LAMMPS数据文件路径
+            topology_files: 分子拓扑文件列表
+            forcefield_files: 力场参数文件列表
             
         Returns:
             生成的输入文件路径
@@ -390,6 +393,7 @@ class LAMMPSFileGenerator:
         equilibration_steps = config.get('equilibration_steps', 500000)
         production_steps = config.get('production_steps', 1000000)
         cutoff = config.get('cutoff', 12.0)
+        box_size = config.get('Box_size', 50.0)
         
         # 创建输出目录
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -398,26 +402,198 @@ class LAMMPSFileGenerator:
         content = [
             f"# LAMMPS输入文件 - {formulation_name}",
             f"# 由Molyte-Cursor生成\n",
+            "# 基本设置",
             "units real",
             "atom_style full",
+            "dimension 3",
+            "boundary p p p",
+            "dielectric 1.0",
             f"timestep {time_step}",
-            f"pair_style lj/cut/coul/long {cutoff}\n",
-            "# 溶剂组分:"
+            f"pair_style lj/cut/coul/long {cutoff}",
+            "special_bonds lj/coul 0.0 0.0 0.5"
         ]
         
-        for solvent in solvents:
-            content.append(f"# - {solvent['name']}: {solvent['concentration']}")
+        # 添加数据文件读取
+        if data_file and os.path.exists(data_file):
+            data_file_rel = os.path.relpath(data_file, os.path.dirname(output_path))
+            content.append(f"\n# 读取系统数据文件")
+            content.append(f"read_data {data_file_rel}")
+        else:
+            content.append(f"\n# 警告：未提供数据文件")
+            
+        # 添加力场参数
+        if forcefield_files:
+            content.append(f"\n# 读取力场参数")
+            for ff_file in forcefield_files:
+                if os.path.exists(ff_file):
+                    ff_file_rel = os.path.relpath(ff_file, os.path.dirname(output_path))
+                    content.append(f"include {ff_file_rel}")
         
-        content.append("\n# 盐组分:")
-        for salt in salts:
-            content.append(f"# - {salt['name']}: {salt['concentration']} mol/L")
+        # 添加分子组定义 - 根据配置动态确定
+        content.append("\n# 定义分子组")
         
-        content.append(f"\n# 模拟参数")
-        content.append(f"# 温度: {temperature} K")
-        content.append(f"# 压力: {pressure} atm")
-        content.append(f"# 平衡步数: {equilibration_steps}")
-        content.append(f"# 生产步数: {production_steps}")
-        content.append(f"# 截断距离: {cutoff} Å")
+        # 从配置中获取分子类型信息
+        cation_types = []
+        anion_types = []
+        solvent_types = []
+        all_types = set()
+        
+        # 尝试从配置中获取阳离子类型
+        for i in range(1, 10):  # 最多10个阳离子
+            cation_key = f"Cation{i}_name"
+            if cation_key in config and config[cation_key]:
+                # 阳离子的类型基于索引，从1开始
+                cation_type = i
+                cation_types.append(cation_type)
+                all_types.add(cation_type)
+                
+        # 尝试从配置中获取阴离子类型
+        for i in range(1, 10):  # 最多10个阴离子
+            anion_key = f"Anion{i}_name"
+            if anion_key in config and config[anion_key]:
+                # 阴离子的类型基于索引，跟在阳离子后面
+                anion_type = len(cation_types) + i
+                anion_types.append(anion_type)
+                all_types.add(anion_type)
+                
+        # 尝试从配置中获取溶剂类型
+        for i in range(1, 10):  # 最多10个溶剂
+            solvent_key = f"Sol{i}_name"
+            if solvent_key in config and config[solvent_key]:
+                # 溶剂的类型基于索引，跟在阴离子后面
+                solvent_type = len(cation_types) + len(anion_types) + i
+                solvent_types.append(solvent_type)
+                all_types.add(solvent_type)
+        
+        # 确保类型列表不为空
+        if not cation_types:
+            self.logger.warning("未找到阳离子类型，将使用默认值")
+            cation_types = [1]
+            all_types.add(1)
+            
+        if not anion_types:
+            self.logger.warning("未找到阴离子类型，将使用默认值")
+            anion_types = [2]
+            all_types.add(2)
+            
+        if not solvent_types:
+            self.logger.warning("未找到溶剂类型，将使用默认值")
+            solvent_types = [3]
+            all_types.add(3)
+        
+        # 添加分子组定义
+        if cation_types:
+            content.append(f"group cations type {' '.join(map(str, cation_types))}")
+        
+        if anion_types:
+            content.append(f"group anions type {' '.join(map(str, anion_types))}")
+            
+        content.append("group ions union cations anions")
+        
+        if solvent_types:
+            content.append(f"group solvents type {' '.join(map(str, solvent_types))}")
+        
+        content.append(f"group all type {' '.join(map(str, sorted(all_types)))}")
+        
+        # 添加能量最小化
+        content.append("\n# 能量最小化")
+        content.append("minimize 1.0e-4 1.0e-6 100 1000")
+        
+        # 添加平衡过程
+        content.append("\n# 初始平衡")
+        content.append("velocity all create {:.1f} 4928459 dist gaussian mom yes rot yes".format(temperature))
+        content.append("fix 1 all npt temp {0:.1f} {0:.1f} 100.0 iso {1:.1f} {1:.1f} 1000.0".format(temperature, pressure))
+        content.append("thermo 1000")
+        content.append("thermo_style custom step temp press vol density etotal ke pe ebond eangle edihed eimp evdwl ecoul elong")
+        content.append("dump 1 all custom 10000 trajectory.lammpstrj id mol type x y z vx vy vz")
+        content.append(f"run {equilibration_steps}")
+        content.append("unfix 1")
+        content.append("undump 1")
+        
+        # 添加生产运行
+        content.append("\n# 生产运行")
+        content.append("reset_timestep 0")
+        content.append("fix 2 all npt temp {0:.1f} {0:.1f} 100.0 iso {1:.1f} {1:.1f} 1000.0".format(temperature, pressure))
+        
+        # 添加计算属性
+        content.append("\n# 计算属性")
+        
+        # RDF计算 - 基于元素类型
+        # 定义阳离子和阴离子元素类型
+        cation_elements = ['Li', 'Na', 'K', 'Mg', 'Ca', 'Zn', 'Al']
+        anion_elements = ['O', 'N', 'P', 'B', 'F', 'Cl', 'Br', 'I', 'S']
+        
+        # 从配置中尝试获取元素类型信息
+        element_types = []
+        
+        # 添加阳离子元素
+        for i, cation_type in enumerate(cation_types, start=1):
+            cation_name = config.get(f"Cation{i}_name", "")
+            if cation_name in cation_elements:
+                element_types.append((cation_type, cation_name))
+                self.logger.info(f"添加阳离子元素: {cation_name}, 类型: {cation_type}")
+        
+        # 添加阴离子元素
+        for i, anion_type in enumerate(anion_types, start=1):
+            anion_name = config.get(f"Anion{i}_name", "")
+            if anion_name in anion_elements or any(element in anion_name for element in anion_elements):
+                # 如果阴离子名称包含任何阴离子元素，将其添加到列表中
+                anion_element = next((element for element in anion_elements if element in anion_name), "")
+                if anion_element:
+                    element_types.append((anion_type, anion_element))
+                    self.logger.info(f"添加阴离子元素: {anion_element}, 类型: {anion_type}")
+        
+        # 生成RDF配对
+        rdf_pairs = []
+        rdf_labels = []
+        
+        # 为每个阳离子-阴离子对生成RDF配对
+        for cation_type, cation_element in element_types:
+            if cation_element in cation_elements:
+                for anion_type, anion_element in element_types:
+                    if anion_element in anion_elements:
+                        rdf_pairs.extend([cation_type, anion_type])
+                        rdf_labels.append(f"rdf_{anion_element}")
+        
+        # 如果没有足够的配对信息，使用默认值
+        if not rdf_pairs:
+            self.logger.warning("未找到足够的元素类型来计算RDF，将使用类型编号")
+            # 如果我们只有类型编号
+            if cation_types and anion_types:
+                for cation_type in cation_types[:1]:  # 限制为第一个阳离子类型
+                    for anion_type in anion_types[:1]:  # 限制为第一个阴离子类型
+                        rdf_pairs.extend([cation_type, anion_type])
+                        rdf_labels.append(f"rdf_type_{anion_type}")
+            else:
+                self.logger.warning("没有找到阳离子或阴离子类型，使用默认值")
+                rdf_pairs = [1, 2]  # 默认使用类型1和2
+                rdf_labels = ["rdf_default"]
+        
+        # 添加RDF计算命令
+        self.logger.info(f"RDF配对: {rdf_pairs}")
+        self.logger.info(f"RDF标签: {rdf_labels}")
+        
+        content.append(f"compute rdf all rdf 100 {' '.join(map(str, rdf_pairs))} cutoff {cutoff:.1f}")
+        content.append(f"fix rdf all ave/time 1000 10 10000 c_rdf[*] file rdf.dat mode vector title3 \"RDF {' '.join(rdf_labels)}\"")
+        
+        # MSD计算
+        content.append("compute msd_cations cations msd")
+        content.append("compute msd_anions anions msd")
+        content.append("compute msd_solvents solvents msd")
+        content.append("fix msd_c all ave/time 100 1 100 c_msd_cations[1] c_msd_cations[2] c_msd_cations[3] c_msd_cations[4] file msd_cations.dat")
+        content.append("fix msd_a all ave/time 100 1 100 c_msd_anions[1] c_msd_anions[2] c_msd_anions[3] c_msd_anions[4] file msd_anions.dat")
+        content.append("fix msd_s all ave/time 100 1 100 c_msd_solvents[1] c_msd_solvents[2] c_msd_solvents[3] c_msd_solvents[4] file msd_solvents.dat")
+        
+        # 输出设置
+        content.append("\n# 输出设置")
+        content.append("thermo 1000")
+        content.append("thermo_style custom step temp press vol density etotal ke pe ebond eangle edihed eimp evdwl ecoul elong")
+        content.append("dump 2 all custom 10000 prod_trajectory.lammpstrj id mol type x y z vx vy vz")
+        
+        # 运行生产
+        content.append(f"\n# 运行生产模拟")
+        content.append(f"run {production_steps}")
+        content.append("write_data final_system.data")
         
         # 写入文件
         with open(output_path, 'w') as f:

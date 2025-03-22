@@ -109,6 +109,10 @@ def setup_logger(name='molyte', log_level=logging.INFO, log_file=None):
     Returns:
         配置好的日志记录器对象
     """
+    # 确保log_level是有效的日志级别
+    if isinstance(log_level, str):
+        log_level = getattr(logging, log_level.upper(), logging.INFO)
+        
     # 使用Logger类创建日志记录器，确保兼容性
     logger_instance = Logger(log_level=log_level, log_file=log_file)
     return logger_instance.get_logger() 

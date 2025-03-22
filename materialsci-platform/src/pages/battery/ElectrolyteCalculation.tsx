@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Typography, Card, Row, Col, Button, Divider, Space, Tabs, Steps, Form, Input, InputNumber, Select, Upload, message, Checkbox, theme, notification, Modal, Alert, Tag } from 'antd';
+import React, { useState, useEffect, useRef } from 'react';
+import { Typography, Card, Row, Col, Button, Divider, Space, Tabs, Steps, Form, Input, InputNumber, Select, Upload, message, Checkbox, theme, notification, Modal, Alert, Tag, Drawer } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { 
   NodeIndexOutlined,
@@ -20,6 +20,7 @@ import {
 import { isAuthenticated, login } from '../../services/auth';
 import * as electrolyteService from '../../services/electrolyteService';
 import { ICalculationData, IFormulationData } from '../../services/electrolyteService';
+import api from '../../services/api';
 
 // 解构Antd组件
 const { Title, Paragraph } = Typography;
@@ -103,6 +104,59 @@ const ElectrolyteCalculation: React.FC = () => {
   // 添加配方列表状态
   const [formulations, setFormulations] = useState<any[]>([]);
   const [formulationsLoading, setFormulationsLoading] = useState<boolean>(false);
+
+  // 添加日志状态和函数
+  const [logMessages, setLogMessages] = useState<string[]>([]);
+  const [showLogDrawer, setShowLogDrawer] = useState(false);
+  const logEndRef = useRef<HTMLDivElement>(null);
+  
+  // 添加日志函数
+  const addLog = (msg: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const logMsg = `[${timestamp}] ${msg}`;
+    setLogMessages(prev => [...prev, logMsg]);
+    
+    // 滚动到日志底部
+    setTimeout(() => {
+      if (logEndRef.current) {
+        logEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 100);
+  };
+
+  // 渲染状态日志组件
+  const renderLogDrawer = () => {
+    return (
+      <Drawer
+        title="处理状态日志"
+        placement="right"
+        width={500}
+        open={showLogDrawer}
+        onClose={() => setShowLogDrawer(false)}
+        maskClosable={true}
+      >
+        <div style={{ 
+          height: 'calc(100vh - 150px)', 
+          overflowY: 'auto',
+          backgroundColor: '#f0f0f0',
+          padding: '10px',
+          fontFamily: 'monospace',
+          borderRadius: '4px'
+        }}>
+          {logMessages.map((msg, index) => (
+            <div key={index} style={{ 
+              marginBottom: '5px',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word'
+            }}>
+              {msg}
+            </div>
+          ))}
+          <div ref={logEndRef} />
+        </div>
+      </Drawer>
+    );
+  };
 
   // 从后端获取溶剂和盐数据
   const fetchSolventsAndSalts = () => {
@@ -343,52 +397,197 @@ const ElectrolyteCalculation: React.FC = () => {
   // 表单提交处理
   const handleSubmit = async (values: any) => {
     if (step === 2) {
-      // 最后一步，提交整个表单
       try {
+        // 清空之前的日志
+        setLogMessages([]);
+        // 显示日志抽屉
+        setShowLogDrawer(true);
+        
         setSubmitting(true);
+        addLog('开始提交配方数据...');
+        addLog(`表单数据: ${JSON.stringify(values, null, 2)}`);
         
-        // 准备API请求数据
-        const formData = {
-          name: values.formulaName,
-          description: values.description || '',
-          salts: values.ionPairs.map((pair: any) => ({
-            // 根据阴阳离子对，在已有的盐列表中查找对应的盐
-            // 如果没有找到，则创建一个新盐，使用阴阳离子的ID作为盐的名称
-            id: getSaltIdByCationAnion(pair.cation, pair.anion) || `${pair.cation}-${pair.anion}`,
-            cation: pair.cation,
-            anion: pair.anion,
-            concentration: pair.concentration
-          })),
-          solvents: values.solvents.map((s: any) => ({
-            id: parseInt(s.solvent),
-            concentration: s.volumeRatio
-          })),
-          temperature: values.temperature,
-          pressure: values.pressure,
-          time_step: values.timeStep,
-          equilibration_steps: values.equilibrationSteps,
-          production_steps: values.productionSteps,
-          cutoff: values.cutoff,
-          additional_params: values.additionalParams ? JSON.parse(values.additionalParams) : null
+        // 检查表单数据结构
+        addLog(`发现阳离子数据: ${values.cations?.length || 0}个`);
+        addLog(`发现阴离子数据: ${values.anions?.length || 0}个`);
+        addLog(`发现溶剂数据: ${values.solvents?.length || 0}个`);
+        
+        // 准备配方数据 - 完全匹配后端期望的格式
+        const recipeData = {
+          name: values.formulaName || "未命名配方",
+          temperature: values.temperature || 300,
+          box_size: values.boxSize || 30,
+          // 阳离子数据
+          cations: values.cations?.map((cation: any) => ({
+            name: cation.type || "Li",
+            number: Math.round(cation.concentration * 16),
+            charge: 1
+          })) || [{
+            name: "Li", 
+            number: 16, 
+            charge: 1
+          }],
+          // 阴离子数据
+          anions: values.anions?.map((anion: any) => ({
+            name: anion.type || "PF6",
+            number: Math.round(anion.concentration * 16),
+            charge: -1
+          })) || [{
+            name: "PF6", 
+            number: 16, 
+            charge: -1
+          }],
+          // 溶剂数据
+          solvents: values.solvents?.map((s: any) => {
+            const solventOption = getSolventOptions().find(opt => opt.value === s.solvent);
+            return {
+              name: solventOption?.label.split(' ')[0] || 'EC',
+              smile: solventOption?.smile || 'C1COC(=O)O1',
+              number: Math.round(s.volumeRatio * 54)
+            };
+          }) || [{
+            name: "EC", 
+            smile: "C1COC(=O)O1", 
+            number: 54
+          }],
+          // 可选：传递计算类型
+          calculation_types: values.calculationTypes || ['conductivity']
         };
+
+        addLog(`准备提交的配方数据: ${JSON.stringify(recipeData, null, 2)}`);
         
-        // 调用API创建配方
-        const response = await electrolyteService.createFormulation(formData);
-        
-        // 保存创建的配方ID
-        setCurrentFormulationId(response.data.id);
-        
-        message.success('电解质配方创建成功!');
-        notification.success({
-          message: '操作成功',
-          description: '电解质配方已成功创建，现在可以生成输入文件或提交计算。',
+        try {
+          // 显示加载提示
+          message.loading({ content: '正在提交配方到后端...', key: 'submitRecipe', duration: 0 });
+          
+          // 调用API提交配方前的日志
+          addLog('开始调用API提交配方...');
+          
+          // 直接使用原始axios发送请求，添加更多调试信息
+          addLog(`提交到URL: ${api.defaults.baseURL}/process-recipe/`);
+          
+          // 调用API提交配方
+          addLog('发送API请求...');
+          try {
+            const response = await electrolyteService.submitRecipe(recipeData);
+            
+            // 调用API后的日志
+            addLog('API请求完成!');
+            addLog(`响应状态: ${response.status}`);
+            addLog(`响应数据: ${JSON.stringify(response.data, null, 2)}`);
+            
+            if (response?.data?.success) {
+              message.success({ content: '配方提交成功！', key: 'submitRecipe' });
+              addLog('配方提交成功!');
+              
+              // 保存创建的配方ID
+              if (response.data.formulation_id) {
+                setCurrentFormulationId(response.data.formulation_id);
+                addLog(`设置当前配方ID: ${response.data.formulation_id}`);
+                
+                // 显示弹窗表明成功
+                Modal.success({
+                  title: '配方提交成功',
+                  content: (
+                    <div>
+                      <p>配方ID: {response.data.formulation_id}</p>
+                      {response.data.calculation_id && (
+                        <p>计算任务ID: {response.data.calculation_id}</p>
+                      )}
+                      <p>配方已成功提交到后端处理</p>
+                    </div>
+                  ),
+                });
+              }
+              
+              // 如果返回了计算ID，说明计算任务已经创建
+              if (response.data.calculation_id) {
+                addLog(`收到计算任务ID: ${response.data.calculation_id}`);
+                notification.success({
+                  message: '计算任务已创建',
+                  description: `计算任务ID: ${response.data.calculation_id}，正在跳转到计算任务列表...`,
+                  duration: 5
+                });
+                
+                // 跳转到计算任务列表页面
+                addLog('延迟3秒后将跳转到任务管理页面...');
+                setTimeout(() => {
+                  navigate('/user/tasks', { 
+                    state: { 
+                      refresh: true,
+                      highlightId: response.data.calculation_id 
+                    } 
+                  });
+                }, 3000);
+              }
+            } else {
+              // 如果返回的success为false
+              addLog(`请求返回success=false: ${response.data.error || '未知错误'}`);
+              throw new Error(response?.data?.error || '提交失败，未收到成功响应');
+            }
+          } catch (apiError: any) {
+            addLog(`API调用出错: ${apiError.message}`);
+            
+            if (apiError.response) {
+              addLog(`HTTP状态码: ${apiError.response.status}`);
+              addLog(`响应数据: ${JSON.stringify(apiError.response.data || {}, null, 2)}`);
+            } else if (apiError.request) {
+              addLog('请求已发送但未收到响应，可能是网络问题或后端未启动');
+            } else {
+              addLog(`请求配置问题: ${apiError.message}`);
+            }
+            
+            message.error({
+              content: apiError.response?.data?.error || apiError.message || '配方提交失败，请检查网络连接',
+              key: 'submitRecipe'
+            });
+            
+            // 显示详细错误信息
+            notification.error({
+              message: '提交失败',
+              description: (
+                <div>
+                  <p>错误详情：{apiError.message}</p>
+                  <p>请求URL：{apiError.config?.url || '未知'}</p>
+                  <p>状态码：{apiError.response?.status || '未知'}</p>
+                  <p>响应数据：{JSON.stringify(apiError.response?.data || '无数据')}</p>
+                </div>
+              ),
+              duration: 0
+            });
+            
+            // 显示错误弹窗
+            Modal.error({
+              title: '提交失败',
+              content: (
+                <div>
+                  <p>提交配方时出现错误：</p>
+                  <p>{apiError.message || '未知错误'}</p>
+                  <p>请检查网络连接和服务器状态，然后重试。</p>
+                  <p>详细日志请查看右侧状态日志面板。</p>
+                </div>
+              ),
+            });
+          }
+        } catch (error: any) {
+          addLog(`处理过程中出现异常: ${error.message}`);
+          addLog(`错误堆栈: ${error.stack}`);
+          
+          message.error({
+            content: '提交失败，请检查数据格式',
+            key: 'submitRecipe'
+          });
+        } finally {
+          setSubmitting(false);
+          addLog('提交流程结束');
+        }
+      } catch (error: any) {
+        console.error('提交处理失败:', error);
+        console.error('错误堆栈:', error.stack);
+        message.error({
+          content: '提交失败，请检查数据格式',
+          key: 'submitRecipe'
         });
-        
-      } catch (error) {
-        console.error('创建配方失败:', error);
-        message.error('创建配方失败，请检查数据格式或网络连接');
-      } finally {
-        setSubmitting(false);
       }
     } else {
       // 如果不是最后一步，继续下一步
@@ -419,7 +618,8 @@ const ElectrolyteCalculation: React.FC = () => {
 
   // 生成LAMMPS输入文件
   const generateLammpsInputs = async () => {
-    // 不使用弹窗和提示信息
+    // 添加UI反馈
+    message.loading({ content: '正在生成输入文件...', key: 'generateFile', duration: 0 });
     console.log('========开始执行generateLammpsInputs函数=========');
     console.log('生成输入文件按钮被点击');
     
@@ -504,6 +704,7 @@ const ElectrolyteCalculation: React.FC = () => {
       console.log('开始处理溶剂数据...');
       const solvents = values.solvents || [];
       console.log('溶剂数据:', JSON.stringify(solvents, null, 2));
+      console.log('溶剂选项:', JSON.stringify(getSolventOptions(), null, 2));
       
       if (solvents.length > 0) {
         solvents.forEach((solvent: any, index: number) => {
@@ -548,6 +749,7 @@ const ElectrolyteCalculation: React.FC = () => {
         // 如果没有当前配方ID，则先创建新配方
         if (!targetFormulationId) {
           console.log('没有选择现有配方，将创建新配方...');
+          message.loading({ content: '正在创建新配方...', key: 'generateFile', duration: 0 });
           
           // 准备创建配方的数据
           const formData = {
@@ -588,9 +790,16 @@ const ElectrolyteCalculation: React.FC = () => {
             }
           } catch (createError: any) {
             console.error('创建配方失败:', createError);
-            message.error('创建配方失败，请检查数据格式或网络连接');
+            message.error({
+              content: '创建配方失败，请检查数据格式或网络连接',
+              key: 'generateFile'
+            });
             if (createError.response) {
               console.error('错误响应:', createError.response.data);
+              notification.error({
+                message: '创建配方失败',
+                description: `详细错误: ${JSON.stringify(createError.response.data)}`
+              });
             }
             setGenerating(false);
             return;
@@ -599,13 +808,17 @@ const ElectrolyteCalculation: React.FC = () => {
         
         // 确保此时targetFormulationId一定有值
         if (!targetFormulationId) {
-          message.error('无法获取有效的配方ID');
+          message.error({
+            content: '无法获取有效的配方ID',
+            key: 'generateFile'
+          });
           setGenerating(false);
           return;
         }
         
         // 使用获取到的配方ID保存INP文件
         console.log('使用配方ID:', targetFormulationId);
+        message.loading({ content: '正在保存输入文件...', key: 'generateFile', duration: 0 });
         
         try {
           // 更新INP文件
@@ -614,38 +827,90 @@ const ElectrolyteCalculation: React.FC = () => {
           
           // 调用后端生成输入文件API
           console.log('调用后端生成输入文件API...');
+          message.loading({ content: '正在生成LAMMPS输入文件...', key: 'generateFile', duration: 0 });
+          
           try {
+            console.log(`准备调用generateInputFile API，配方ID=${targetFormulationId}`);
             const generateResponse = await electrolyteService.generateInputFile(targetFormulationId);
             console.log('生成输入文件响应:', generateResponse);
+            
             if (generateResponse.status === 200) {
               setHasInputFile(true);
-              // 不显示成功提示
+              message.success({
+                content: '成功生成输入文件!',
+                key: 'generateFile'
+              });
+              notification.success({
+                message: '成功生成输入文件',
+                description: `输入文件已成功生成并保存到服务器。配方ID: ${targetFormulationId}`
+              });
             } else {
-              throw new Error('生成输入文件API调用失败');
+              throw new Error('生成输入文件API调用返回非200状态码');
             }
           } catch (genError: any) {
             console.error('调用生成输入文件API失败:', genError);
             console.error('详细错误:', genError.response?.data || '无详细信息');
-            // 不显示警告提示
+            
+            // 显示错误提示
+            message.error({
+              content: '生成输入文件失败，但已保存基本内容',
+              key: 'generateFile'
+            });
+            
+            // 显示详细错误信息
+            notification.error({
+              message: '生成输入文件失败',
+              description: (
+                <div>
+                  <p>API调用失败但已保存基本输入文件内容。</p>
+                  <p>错误详情: {genError.response?.data?.error || genError.message || '未知错误'}</p>
+                  <p>配方ID: {targetFormulationId}</p>
+                </div>
+              ),
+              duration: 0
+            });
+            
             // 即使生成API失败，也设置为true以允许用户继续
             setHasInputFile(true);
           }
         } catch (apiError: any) {
           console.error('保存INP文件失败:', apiError);
-          // 不显示错误提示
+          
+          // 显示错误提示
+          message.error({
+            content: '保存INP文件失败',
+            key: 'generateFile'
+          });
+          
           if (apiError.response) {
             console.error('错误响应:', apiError.response.data);
+            notification.error({
+              message: '保存INP文件失败',
+              description: `错误详情: ${JSON.stringify(apiError.response.data)}`,
+              duration: 0
+            });
           }
         }
       } catch (error: any) {
         console.error('生成输入文件过程中出错:', error);
-        // 不显示错误提示
+        message.error({
+          content: '生成过程中发生错误',
+          key: 'generateFile'
+        });
+        notification.error({
+          message: '生成输入文件错误',
+          description: error.message || '未知错误',
+          duration: 0
+        });
       } finally {
         setGenerating(false);
       }
     } catch (error: any) {
       console.error('生成输入文件出错:', error);
-      // 不显示错误提示
+      message.error({
+        content: '生成输入文件失败',
+        key: 'generateFile'
+      });
       setGenerating(false);
     }
   };
@@ -756,8 +1021,8 @@ const ElectrolyteCalculation: React.FC = () => {
         const response = await electrolyteService.submitElectrolyteCalculation(calculationData);
         console.log('计算任务提交响应:', response);
         
-        // 立即跳转到计算任务列表页面，不使用setTimeout
-        navigate('/calculations', { state: { refresh: true } }); // 跳转并带上刷新标志
+        // 立即跳转到任务管理页面
+        navigate('/user/tasks', { state: { refresh: true } }); // 跳转到任务管理页面并带上刷新标志
       } catch (apiError) {
         console.error('API调用失败:', apiError);
       }
@@ -1494,8 +1759,18 @@ const ElectrolyteCalculation: React.FC = () => {
   // 主页面布局渲染
   return (
     <div className={styles.pageContainer as string}>
+      {renderLogDrawer()}
       <Card className={styles.containerCard as string}>
-        <Typography.Title level={2}>电解液配方计算工具</Typography.Title>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <Typography.Title level={2}>电解液配方计算工具</Typography.Title>
+          <Button 
+            type="default"
+            icon={<BugOutlined />}
+            onClick={() => setShowLogDrawer(true)}
+          >
+            显示处理日志
+          </Button>
+        </div>
         <Typography.Paragraph>
           设计电解液配方，进行分子动力学模拟，并获取电解液相关性能参数。
           {!isAuthenticated() && (

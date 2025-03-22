@@ -45,7 +45,7 @@ class Analyzer:
         self.gaussian_analyzer = GaussianAnalyzer(self.base_dir, 
                                                  os.path.join(self.output_dir, 'energy_cache.json'),
                                                  self.logger)
-        self.solvent_analyzer = SolventAnalyzer(self.base_dir, self.logger)
+        self.solvent_analyzer = SolventAnalyzer()
         self.visualizer = Visualizer(os.path.join(self.output_dir, 'visualizations'), 
                                     dpi=300, logger=self.logger)
     

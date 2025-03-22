@@ -16,17 +16,17 @@ class GaussianAnalyzer:
     
     提供处理和分析高斯量子化学计算结果的功能
     """
-    def __init__(self, working_dir: str, energy_cache_path: Optional[str] = None, logger=None):
+    def __init__(self, work_dir: str, energy_cache_path: Optional[str] = None, logger=None):
         """
         初始化高斯分析器
 
         Args:
-            working_dir: 工作目录路径
+            work_dir: 工作目录路径
             energy_cache_path: 能量缓存文件路径，如果为None则使用默认路径
             logger: 日志记录器实例
         """
-        self.working_dir = working_dir
-        self.energy_cache_path = energy_cache_path or os.path.join(working_dir, 'energy_cache.json')
+        self.working_dir = work_dir
+        self.energy_cache_path = energy_cache_path or os.path.join(work_dir, 'energy_cache.json')
         self.logger = logger or logging.getLogger(__name__)
     
     def extract_gaussian_energy(self, file_path: str) -> Optional[float]:

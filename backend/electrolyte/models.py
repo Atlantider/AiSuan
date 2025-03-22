@@ -2,6 +2,9 @@ from django.db import models
 from django.contrib.auth.models import User
 import uuid
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 def calculation_file_path(instance, filename):
     """为计算文件生成唯一的文件路径"""
@@ -9,13 +12,33 @@ def calculation_file_path(instance, filename):
     filename = f"{uuid.uuid4()}.{ext}"
     return os.path.join('calculations', str(instance.id), filename)
 
+# 添加SMILE验证函数
+def validate_smile(smile):
+    """
+    不再进行SMILE验证，保持兼容性
+    
+    Args:
+        smile: SMILE字符串
+        
+    Returns:
+        (True, 原始SMILE)
+    """
+    return True, smile
+
 class Solvent(models.Model):
     """溶剂模型"""
     name = models.CharField(max_length=100, verbose_name="溶剂名称")
     smile = models.CharField(max_length=255, verbose_name="SMILE表示法")
+    full_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="完整名称")
+    molecular_weight = models.FloatField(blank=True, null=True, verbose_name="分子量")
+    density = models.FloatField(blank=True, null=True, verbose_name="密度")
     description = models.TextField(blank=True, null=True, verbose_name="描述")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    def save(self, *args, **kwargs):
+        """保存溶剂，不再对SMILE进行验证和修正"""
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
@@ -100,9 +123,12 @@ class Calculation(models.Model):
     """计算模型"""
     STATUS_CHOICES = [
         ('pending', '待处理'),
+        ('submitted', '已提交'),
+        ('queued', '排队中'),
         ('running', '运行中'),
         ('completed', '已完成'),
         ('failed', '失败'),
+        ('cancelled', '已取消'),
     ]
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="calculations", verbose_name="用户")
@@ -119,6 +145,8 @@ class Calculation(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
     started_at = models.DateTimeField(blank=True, null=True, verbose_name="开始时间")
     finished_at = models.DateTimeField(blank=True, null=True, verbose_name="完成时间")
+    slurm_job_id = models.CharField(max_length=100, blank=True, null=True, verbose_name="SLURM作业ID")
+    output_dir = models.CharField(max_length=255, blank=True, null=True, verbose_name="输出目录路径")
     
     def __str__(self):
         return self.name

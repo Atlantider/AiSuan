@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 from ..utils.logger import Logger
 
 class GaussianProcessor:
-    def __init__(self, working_dir=None, logger=None):
-        self.working_dir = working_dir or os.getcwd()
+    def __init__(self, work_dir=None, logger=None):
+        self.working_dir = work_dir or os.getcwd()
         self.logger = logger or Logger().get_logger()
     
     def calculate_and_visualize_properties(self, data_dir):

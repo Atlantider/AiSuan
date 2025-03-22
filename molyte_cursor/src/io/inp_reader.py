@@ -8,6 +8,7 @@ import os
 import re
 import logging
 from typing import Dict, List, Any, Optional, Tuple
+import traceback
 
 class INPReader:
     """
@@ -99,51 +100,74 @@ class INPReader:
                 continue
                 
             try:
-                key, value = line.split(' ', 1)
-                key = key.strip().lower()
-                value = value.strip()
+                # 先检查是否是特殊的SMILE行
+                smile_match = re.search(r'^(sol\d+_smile)\s*(?:=\s*)?(.+)$', line, re.IGNORECASE)
+                if smile_match:
+                    key = smile_match.group(1).lower()
+                    value = smile_match.group(2).strip()
+                    
+                    solvent_index = int(re.search(r'sol(\d+)', key, re.IGNORECASE).group(1)) - 1
+                    while len(result['solvents']) <= solvent_index:
+                        result['solvents'].append({})
+                    
+                    # 检查对应的溶剂名称
+                    solvent_name = ""
+                    if solvent_index < len(result['solvents']):
+                        solvent_name = result['solvents'][solvent_index].get('name', '').upper()
+                    
+                    result['solvents'][solvent_index]['smile'] = value
+                    
+                    self.logger.debug(f"解析SMILE: {key}={value}, 溶剂名称={solvent_name}")
+                    continue
+                
+                # 处理其他类型的行
+                if '=' in line:
+                    # 处理"key = value"格式
+                    parts = line.split('=', 1)
+                    key = parts[0].strip().lower()
+                    value = parts[1].strip()
+                else:
+                    # 处理原始的"key value"格式
+                    parts = line.split(' ', 1)
+                    key = parts[0].strip().lower()
+                    value = parts[1].strip() if len(parts) > 1 else ""
                 
                 # 解析阳离子
-                if key.startswith('cation') and '_name' in key:
-                    cation_index = int(re.search(r'cation(\d+)', key).group(1)) - 1
+                if re.search(r'cation\d+_name', key, re.IGNORECASE):
+                    cation_index = int(re.search(r'cation(\d+)', key, re.IGNORECASE).group(1)) - 1
                     while len(result['cations']) <= cation_index:
                         result['cations'].append({})
                     result['cations'][cation_index]['name'] = value
                 
-                elif key.startswith('cation') and '_ratio' in key:
-                    cation_index = int(re.search(r'cation(\d+)', key).group(1)) - 1
+                elif re.search(r'cation\d+_ratio', key, re.IGNORECASE):
+                    cation_index = int(re.search(r'cation(\d+)', key, re.IGNORECASE).group(1)) - 1
                     while len(result['cations']) <= cation_index:
                         result['cations'].append({})
                     result['cations'][cation_index]['ratio'] = float(value)
                 
                 # 解析阴离子
-                elif key.startswith('anion') and '_name' in key:
-                    anion_index = int(re.search(r'anion(\d+)', key).group(1)) - 1
+                elif re.search(r'anion\d+_name', key, re.IGNORECASE):
+                    anion_index = int(re.search(r'anion(\d+)', key, re.IGNORECASE).group(1)) - 1
                     while len(result['anions']) <= anion_index:
                         result['anions'].append({})
                     result['anions'][anion_index]['name'] = value
                 
-                elif key.startswith('anion') and '_ratio' in key:
-                    anion_index = int(re.search(r'anion(\d+)', key).group(1)) - 1
+                elif re.search(r'anion\d+_ratio', key, re.IGNORECASE):
+                    anion_index = int(re.search(r'anion(\d+)', key, re.IGNORECASE).group(1)) - 1
                     while len(result['anions']) <= anion_index:
                         result['anions'].append({})
                     result['anions'][anion_index]['ratio'] = float(value)
                 
-                # 解析溶剂
-                elif key.startswith('sol') and '_name' in key:
-                    solvent_index = int(re.search(r'sol(\d+)', key).group(1)) - 1
+                # 解析溶剂名称
+                elif re.search(r'sol\d+_name', key, re.IGNORECASE):
+                    solvent_index = int(re.search(r'sol(\d+)', key, re.IGNORECASE).group(1)) - 1
                     while len(result['solvents']) <= solvent_index:
                         result['solvents'].append({})
                     result['solvents'][solvent_index]['name'] = value
                 
-                elif key.startswith('sol') and '_smile' in key:
-                    solvent_index = int(re.search(r'sol(\d+)', key).group(1)) - 1
-                    while len(result['solvents']) <= solvent_index:
-                        result['solvents'].append({})
-                    result['solvents'][solvent_index]['smile'] = value
-                
-                elif key.startswith('sol') and '_ratio' in key:
-                    solvent_index = int(re.search(r'sol(\d+)', key).group(1)) - 1
+                # 解析溶剂比例
+                elif re.search(r'sol\d+_ratio', key, re.IGNORECASE):
+                    solvent_index = int(re.search(r'sol(\d+)', key, re.IGNORECASE).group(1)) - 1
                     while len(result['solvents']) <= solvent_index:
                         result['solvents'].append({})
                     result['solvents'][solvent_index]['ratio'] = float(value)
@@ -163,6 +187,7 @@ class INPReader:
             
             except Exception as e:
                 self.logger.warning(f"解析行'{line}'时出错: {str(e)}")
+                self.logger.debug(f"异常详情: {traceback.format_exc()}")
         
         # 计算浓度（如果没有直接提供）
         if 'concentration' not in result['general'] and len(result['cations']) > 0:
@@ -214,18 +239,34 @@ class INPReader:
             cation_ratio = cation.get('ratio', 1.0)
             salt_concentration = base_concentration * cation_ratio
             
+            # 移除离子名称中的+和-符号
+            cation_name = cation['name'].replace('+', '').replace('-', '')
+            anion_name = anion['name'].replace('+', '').replace('-', '')
+            
             # 创建盐配置
             salt = {
-                'name': f"{cation['name']}{anion['name']}",
-                'cation': cation['name'],
-                'anion': anion['name'],
+                'name': f"{cation_name}{anion_name}",
+                'cation': cation_name,
+                'anion': anion_name,
                 'concentration': salt_concentration
             }
             
             config['salts'].append(salt)
+            
+            # 展平cation和anion信息到主配置中 (兼容ElectrolyteWorkflow的访问方式)
+            idx = i + 1  # 1-indexed
+            config[f"Cation{idx}_name"] = cation_name
+            config[f"Cation{idx}_ratio"] = cation.get('ratio', 1.0)
+            if 'smile' in cation:
+                config[f"Cation{idx}_smile"] = cation['smile']
+                
+            config[f"Anion{idx}_name"] = anion_name
+            config[f"Anion{idx}_ratio"] = anion.get('ratio', 1.0)
+            if 'smile' in anion:
+                config[f"Anion{idx}_smile"] = anion['smile']
         
         # 处理溶剂
-        for solvent in inp_data['solvents']:
+        for i, solvent in enumerate(inp_data['solvents']):
             if not solvent.get('name'):
                 continue
                 
@@ -240,6 +281,13 @@ class INPReader:
             }
             
             config['solvents'].append(solvent_config)
+            
+            # 展平solvent信息到主配置中 (兼容ElectrolyteWorkflow的访问方式)
+            idx = i + 1  # 1-indexed
+            config[f"Sol{idx}_name"] = solvent['name']
+            config[f"Sol{idx}_ratio"] = solvent.get('ratio', 5.0)
+            if 'smile' in solvent:
+                config[f"Sol{idx}_smile"] = solvent['smile']
         
         # 如果没有溶剂，添加默认溶剂
         if not config['solvents']:
@@ -248,6 +296,58 @@ class INPReader:
                 'smile': 'C1COC(=O)O1',
                 'concentration': 5.0
             })
+            # 同时展平到主配置
+            config["Sol1_name"] = 'EC'
+            config["Sol1_smile"] = 'C1COC(=O)O1'
+            config["Sol1_ratio"] = 5.0
+        else:
+            # 验证所有溶剂的SMILE字符串
+            for i, solvent in enumerate(config['solvents']):
+                # 确保SMILE字符串存在
+                if 'smile' not in solvent or not solvent['smile']:
+                    self.logger.warning(f"溶剂 {solvent.get('name', f'未知溶剂{i}')} 缺少SMILE字符串，将尝试提供默认值")
+                    
+                    # 检查是否是已知溶剂
+                    if solvent.get('name', '').upper() == 'EC':
+                        solvent['smile'] = 'C1COC(=O)O1'
+                        self.logger.info(f"为EC溶剂添加默认SMILE字符串: 'C1COC(=O)O1'")
+                    elif solvent.get('name', '').upper() == 'DMC':
+                        solvent['smile'] = 'COC(=O)OC'
+                        self.logger.info(f"为DMC溶剂添加默认SMILE字符串: 'COC(=O)OC'")
+                    elif solvent.get('name', '').upper() == 'DEC':
+                        solvent['smile'] = 'CCOC(=O)OCC'
+                        self.logger.info(f"为DEC溶剂添加默认SMILE字符串: 'CCOC(=O)OCC'")
+                    elif solvent.get('name', '').upper() == 'EMC':
+                        solvent['smile'] = 'CCOC(=O)OC'
+                        self.logger.info(f"为EMC溶剂添加默认SMILE字符串: 'CCOC(=O)OC'")
+                    elif solvent.get('name', '').upper() == 'PC':
+                        solvent['smile'] = 'CC1COC(=O)O1'
+                        self.logger.info(f"为PC溶剂添加默认SMILE字符串: 'CC1COC(=O)O1'")
+                
+                # 验证SMILE字符串格式
+                if 'smile' in solvent and solvent['smile']:
+                    # 检查SMILE字符串中的括号是否配对
+                    parenthesis = 0
+                    brackets = 0
+                    for c in solvent['smile']:
+                        if c == '(':
+                            parenthesis += 1
+                        elif c == ')':
+                            parenthesis -= 1
+                        elif c == '[':
+                            brackets += 1
+                        elif c == ']':
+                            brackets -= 1
+                    
+                    if parenthesis != 0 or brackets != 0:
+                        self.logger.warning(f"溶剂 {solvent.get('name', f'未知溶剂{i}')} 的SMILE字符串括号不匹配: '{solvent['smile']}'")
+                
+                # 更新配置字典
+                idx = i + 1  # 1-indexed
+                config[f"Sol{idx}_name"] = solvent['name']
+                config[f"Sol{idx}_ratio"] = solvent.get('ratio', 5.0)
+                if 'smile' in solvent:
+                    config[f"Sol{idx}_smile"] = solvent['smile']
         
         # 处理计算类型
         if 'calculation_types' in general:

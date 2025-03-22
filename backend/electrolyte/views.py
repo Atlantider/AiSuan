@@ -41,6 +41,8 @@ from django.core.exceptions import PermissionDenied
 from django.http import Http404
 import mimetypes
 from pathlib import Path
+from .recipe_processor import process_recipe_from_web
+from .utils import fix_smile_in_formulation, fix_all_ec_smile_errors
 
 # 添加molyte_cursor到Python路径
 MOLYTE_PATH = os.path.join(os.path.dirname(settings.BASE_DIR), 'molyte_cursor')
@@ -171,11 +173,11 @@ class ElectrolyteFormulationViewSet(viewsets.ModelViewSet):
         生成LAMMPS输入文件
         """
         # 添加详细日志
-        logger.info("="*50)
+        logger.info("="*80)
         logger.info(f"generate_input_file API被调用, pk={pk}")
         logger.info(f"request.data={request.data}")
         logger.info(f"request.user={request.user}")
-        logger.info("="*50)
+        logger.info("="*80)
         
         # 获取请求中的formulation_id，或使用URL中的pk
         formulation_id = pk or request.data.get("formulation_id")
@@ -184,6 +186,7 @@ class ElectrolyteFormulationViewSet(viewsets.ModelViewSet):
         logger.info(f"generate_input_file API called for formulation_id: {formulation_id}")
         
         if not formulation_id:
+            logger.error("未提供配方ID")
             return Response(
                 {"error": "未提供配方ID"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -192,22 +195,44 @@ class ElectrolyteFormulationViewSet(viewsets.ModelViewSet):
         try:
             # 尝试获取配方
             formulation = ElectrolyteFormulation.objects.get(id=formulation_id)
+            logger.info(f"成功获取配方: id={formulation.id}, name={formulation.name}")
             
-            # 生成输入文件
+            # 生成输入文件内容
+            logger.info("开始生成LAMMPS输入文件内容...")
             inp_content = generate_lammps_inp_file(formulation)
+            logger.info(f"输入文件内容生成成功，长度: {len(inp_content)}")
             
             # 保存输入文件内容
-            if not hasattr(formulation, "inpfile") or not formulation.inpfile:
+            logger.info("正在保存输入文件内容...")
+            input_file = None
+            try:
+                # 查找现有输入文件
+                input_file = InputFile.objects.get(formulation=formulation)
+                logger.info(f"找到现有输入文件: id={input_file.id}")
+                # 更新现有INP文件
+                input_file.content = inp_content
+                input_file.save()
+                logger.info("成功更新现有输入文件")
+            except InputFile.DoesNotExist:
                 # 如果不存在INP文件，创建一个
-                inp_file = InputFile.objects.create(
+                logger.info("未找到现有输入文件，创建新文件...")
+                input_file = InputFile.objects.create(
                     formulation=formulation,
                     content=inp_content
                 )
-            else:
-                # 更新现有INP文件
-                formulation.inpfile.content = inp_content
-                formulation.inpfile.save()
+                logger.info(f"成功创建新输入文件: id={input_file.id}")
                 
+            # 检查文件是否成功保存
+            if input_file and input_file.file_path:
+                logger.info(f"输入文件已保存到磁盘: {input_file.file_path}")
+                if os.path.exists(input_file.file_path):
+                    logger.info(f"文件确实存在于磁盘上，大小: {os.path.getsize(input_file.file_path)} 字节")
+                else:
+                    logger.warning(f"文件路径存在，但文件不存在于磁盘上: {input_file.file_path}")
+            else:
+                logger.warning("输入文件对象或文件路径为空")
+                
+            logger.info("成功完成生成输入文件API调用")
             # 返回成功响应
             return Response(
                 {"message": "已成功生成输入文件"},
@@ -222,6 +247,7 @@ class ElectrolyteFormulationViewSet(viewsets.ModelViewSet):
             )
         except Exception as e:
             logger.error(f"Error generating input file: {str(e)}")
+            logger.exception("详细异常堆栈")
             return Response(
                 {"error": f"生成输入文件时出错: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -733,9 +759,12 @@ def generate_lammps_inp_file(formulation):
                 'concentration': component.concentration
             })
         elif component.component_type == 'solvent':
+            # 获取溶剂SMILE字符串，不再进行验证
+            smile = component.solvent.smile
+            
             solvents.append({
                 'name': component.solvent.name,
-                'smile': component.solvent.smile,
+                'smile': smile,
                 'concentration': component.concentration
             })
     
@@ -791,13 +820,14 @@ def generate_lammps_inp_file(formulation):
             inp_content += f"# 溶剂 {i+1}\n"
             inp_content += f"Sol{i+1}_name = {solvent['name']}\n"
             if 'smile' in solvent and solvent['smile']:
+                # 确保这里使用的是修正后的SMILE字符串
                 inp_content += f"Sol{i+1}_smile = {solvent['smile']}\n"
             inp_content += f"Sol{i+1}_ratio = {solvent['concentration'] * 5}\n\n"
     else:
         # 默认溶剂
         inp_content += "# 默认溶剂\n"
         inp_content += "Sol1_name = EC\n"
-        inp_content += "Sol1_smile = C1OC(=O)O1\n"
+        inp_content += "Sol1_smile = C1COC(=O)O1\n"  # 确保使用正确的EC SMILE字符串
         inp_content += "Sol1_ratio = 5.0\n\n"
     
     # 写入计算类型
@@ -805,3 +835,110 @@ def generate_lammps_inp_file(formulation):
     inp_content += "calculation_types = conductivity,diffusion,density_viscosity\n"
     
     return inp_content
+
+@api_view(['POST'])
+@permission_classes([])  # 空列表表示不需要任何权限
+def process_web_recipe(request):
+    """处理从网页提交的配方数据并使用molyte_cursor生成文件
+    
+    请求体中应包含完整的配方数据，格式如下：
+    {
+        "name": "配方名称",
+        "temperature": 300,
+        "box_size": 30,
+        "cations": [
+            {"name": "Li", "number": 16, "charge": 1}
+        ],
+        "anions": [
+            {"name": "PF6", "number": 16, "charge": -1}
+        ],
+        "solvents": [
+            {"name": "EC", "smile": "C1COC(=O)O1", "number": 54}
+        ]
+    }
+    """
+    logger.info(f"接收到网页配方处理请求: {request.data}")
+    
+    # 检查请求数据
+    if not request.data:
+        return Response({"success": False, "error": "未提供配方数据"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # 使用配方处理器处理数据
+    result = process_recipe_from_web(
+        recipe_data=request.data,
+        user=request.user if request.user.is_authenticated else None
+    )
+    
+    if result["success"]:
+        # 处理成功，启动异步任务执行计算
+        calculation_id = result.get("calculation_id")
+        if calculation_id:
+            # 启动计算任务
+            try:
+                # 直接调用任务函数（生产环境通常使用Celery）
+                run_electrolyte_calculation(calculation_id)
+                return Response({
+                    "success": True, 
+                    "message": "配方处理成功，计算任务已启动",
+                    "formulation_id": result.get("formulation_id"),
+                    "calculation_id": calculation_id
+                }, status=status.HTTP_200_OK)
+            except Exception as e:
+                logger.error(f"启动计算任务时出错: {e}")
+                return Response({
+                    "success": True, 
+                    "message": "配方处理成功，但启动计算任务失败",
+                    "formulation_id": result.get("formulation_id"),
+                    "calculation_id": calculation_id,
+                    "error": str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        else:
+            return Response({
+                "success": True, 
+                "message": "配方处理成功",
+                "formulation_id": result.get("formulation_id")
+            }, status=status.HTTP_200_OK)
+    else:
+        # 处理失败
+        return Response({
+            "success": False, 
+            "error": result.get("error", "未知错误")
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def fix_formulation_smile(request, pk=None):
+    """
+    修复特定配方中EC的SMILE字符串
+    """
+    formulation_id = pk
+    
+    if not formulation_id:
+        return Response({
+            "success": False,
+            "error": "必须提供配方ID"
+        }, status=400)
+    
+    success, message = fix_smile_in_formulation(formulation_id)
+    
+    return Response({
+        "success": success,
+        "message": message,
+        "formulation_id": formulation_id
+    })
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def fix_all_smiles(request):
+    """
+    修复所有配方中EC的SMILE字符串
+    """
+    fixed_count, error_count, details = fix_all_ec_smile_errors()
+    
+    return Response({
+        "success": True,
+        "fixed_count": fixed_count,
+        "error_count": error_count,
+        "total_count": fixed_count + error_count,
+        "details": details
+    })

@@ -17,15 +17,15 @@ class MSDAnalyzer:
     
     提供处理和分析分子动力学模拟中均方位移的功能
     """
-    def __init__(self, working_dir: str, logger=None):
+    def __init__(self, work_dir: str, logger=None):
         """
         初始化MSD分析器
 
         Args:
-            working_dir: 工作目录路径
+            work_dir: 工作目录路径
             logger: 日志记录器实例
         """
-        self.working_dir = working_dir
+        self.working_dir = work_dir
         self.logger = logger or logging.getLogger(__name__)
     
     def plot_msd(self, msd_file: str, output_filename: str) -> None:

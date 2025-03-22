@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, Location } from 'react-router-dom';
 import { Spin } from 'antd';
 import AuthGuard from '../components/common/AuthGuard';
 import DashboardLayout from '../layouts/DashboardLayout';
@@ -77,6 +77,13 @@ const PageNotFound = () => (
   </div>
 );
 
+// 重定向组件
+const RedirectToTaskDetail = () => {
+  const location = useLocation();
+  const id = location.pathname.split('/').pop();
+  return <Navigate to={`/user/tasks/${id}`} replace />;
+};
+
 const AppRoutes = () => {
   return (
     <Suspense fallback={<LoadingComponent />}>
@@ -90,7 +97,7 @@ const AppRoutes = () => {
         
         {/* 计算模块选择页面 */}
         <Route path="/calculations" element={<CalculationsIndex />} />
-        <Route path="/calculations/:id" element={<CalculationDetail />} />
+        <Route path="/calculations/:id" element={<RedirectToTaskDetail />} />
         
         {/* 电池计算模块 */}
         <Route path="/battery" element={<BatteryIndex />} />
@@ -117,6 +124,7 @@ const AppRoutes = () => {
         <Route element={<AuthGuard><DashboardLayout /></AuthGuard>}>
           <Route path="/user/dashboard" element={<Dashboard />} />
           <Route path="/user/tasks" element={<TaskManagement />} />
+          <Route path="/user/tasks/:id" element={<CalculationDetail />} />
           <Route path="/user/data" element={<div>数据管理页面</div>} />
           <Route path="/user/workflows" element={<div>工作流管理页面</div>} />
           <Route path="/user/settings" element={<div>账户设置页面</div>} />
