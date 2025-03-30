@@ -29,9 +29,6 @@ try:
 except ImportError:
     RDKIT_AVAILABLE = False
 
-# 导入自适应频率计算模块
-from molyte_cursor.src.utils.simulation_frequency_helper import calculate_adaptive_frequencies, get_standard_frequencies
-
 from molyte_cursor.src.io.inp_reader import read_inp_file, parse_inp_content
 from molyte_cursor.src.utils.simulation_helpers import SimulationHelper
 from molyte_cursor.src.utils.charge_modifier import replace_charges_in_lmp
@@ -1283,193 +1280,62 @@ class MolyteWorkflow:
         
         return self.generated_files
     
-    def _generate_molecule_files(self, molecule_info, molecule_dir):
-        """生成或复制分子文件"""
-        molecule_name = molecule_info.get('name', '')
-        molecule_smile = molecule_info.get('smile', '')
+    def _generate_molecule_files(self, molecule, molecule_dir):
+        """处理分子文件，如果分子库中不存在则尝试使用SMILE生成"""
         
-        # 确定分子类别
-        category = None
-        for cat in self.formulation_data.get("cations", []):
-            if cat.get("name") == molecule_name:
-                category = "cations"
-                molecule_info['type'] = 'cation'
-                break
+        # 获取分子名称和信息
+        molecule_name = molecule.get("name")
+        smile = molecule.get("smile", "")
         
-        if not category:
-            for an in self.formulation_data.get("anions", []):
-                if an.get("name") == molecule_name:
-                    category = "anions"
-                    molecule_info['type'] = 'anion'
-                    break
+        # 从分子库获取
+        source_dir = self.molecule_library._get_molecule_path(molecule_name)
+        self.logger.info(f"分子库中的源目录: {source_dir}")
         
-        if not category:
-            category = "solvents"
-            molecule_info['type'] = 'solvent'
-        
-        self.logger.info(f"处理分子 {molecule_name}，类别: {category}")
-        
-        # 创建分子子目录
-        sanitized_name = molecule_name.replace('+', '').replace('-', '')
-        molecule_subdir = os.path.join(molecule_dir, sanitized_name)
-        os.makedirs(molecule_subdir, exist_ok=True)
-        self.logger.info(f"创建分子目录: {molecule_subdir}")
-        
-        # 确认分子目录存在
-        if not os.path.exists(molecule_subdir):
-            error_msg = f"无法创建分子目录: {molecule_subdir}"
-            self.logger.error(error_msg)
-            raise IOError(error_msg)
-        
-        # 检查是否使用分子库
-        if hasattr(self, 'use_molecule_library') and self.use_molecule_library and self.molecule_library:
-            self.logger.info(f"使用分子库获取分子 {molecule_name}")
+        if source_dir and os.path.exists(source_dir):
+            # 分子库中存在，复制文件
+            for file in os.listdir(source_dir):
+                src_file = os.path.join(source_dir, file)
+                dst_file = os.path.join(molecule_dir, file)
+                shutil.copy2(src_file, dst_file)
+            return self._get_molecule_files(molecule_dir)
+        else:
+            # 分子库中不存在，尝试使用SMILE生成
+            self.logger.info(f"分子库中不存在{molecule_name}，尝试使用SMILE生成")
             
-            # 如果是溶剂且提供了SMILE，先尝试通过SMILE查找
-            existing_name = None
-            if category == "solvents" and molecule_smile:
-                existing_name = self.molecule_library.find_by_smile(molecule_smile)
-                if existing_name:
-                    self.logger.info(f"分子库中找到了匹配SMILE的分子: {existing_name}")
-                    
-                    # 如果找到的分子名称不同于当前分子名称，使用当前名称获取
-                    if existing_name != molecule_name:
-                        self.logger.info(f"使用匹配的分子 {existing_name} 代替 {molecule_name}")
+            if not smile:
+                self.logger.error(f"无法生成{molecule_name}：未提供SMILE字符串")
+                return {}
             
-            # 直接从分子库复制文件（不使用符号链接）
             try:
-                # 从分子库获取文件 - 使用复制模式而非符号链接
-                source_name = existing_name if existing_name else molecule_name
-                self.logger.info(f"从分子库获取分子文件: {source_name} -> {molecule_subdir}")
+                # 创建临时目录用于生成分子文件
+                temp_dir = os.path.join(molecule_dir, "temp_gen")
+                os.makedirs(temp_dir, exist_ok=True)
                 
-                # 获取源文件路径
-                mol_dir = self.molecule_library._get_molecule_path(source_name)
-                self.logger.info(f"分子库中的源目录: {mol_dir}")
+                # 使用ligpargen处理SMILE
+                self.logger.info(f"使用ligpargen处理SMILE: {smile}")
+                success = self.generate_molecule_from_smile(smile, molecule_name, temp_dir)
                 
-                if not os.path.exists(mol_dir):
-                    self.logger.error(f"分子库中的源目录不存在: {mol_dir}")
-                    # 继续尝试其他方法
+                if success:
+                    # 移动生成的文件到分子目录
+                    for file in os.listdir(temp_dir):
+                        src_file = os.path.join(temp_dir, file)
+                        dst_file = os.path.join(molecule_dir, file)
+                        shutil.move(src_file, dst_file)
+                    
+                    # 清理临时目录
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    
+                    # 保存到分子库中
+                    self.molecule_library.add_molecule(molecule_name, molecule_dir)
+                    
+                    return self._get_molecule_files(molecule_dir)
                 else:
-                    # 手动复制文件
-                    result_files = {}
-                    
-                    # 确定要复制哪些文件扩展名
-                    extensions = ["pdb", "lt"] if category in ["cations", "anions"] else ["pdb", "lt", "chg"]
-                    
-                    for ext in extensions:
-                        src_file = os.path.join(mol_dir, f"{source_name}.{ext}")
-                        dst_file = os.path.join(molecule_subdir, f"{sanitized_name}.{ext}")
-                        
-                        self.logger.info(f"检查源文件是否存在: {src_file}")
-                        if not os.path.exists(src_file):
-                            self.logger.warning(f"源文件不存在: {src_file}")
-                            continue
-                            
-                        # 验证源文件可读性
-                        try:
-                            with open(src_file, 'rb') as test_file:
-                                # 读取一些数据以确保文件可读
-                                data = test_file.read(100)
-                                self.logger.info(f"源文件 {src_file} 可读，大小: {len(data)} 字节")
-                        except Exception as e:
-                            self.logger.error(f"源文件不可读: {src_file}, 错误: {str(e)}")
-                            continue
-                        
-                        # 复制文件
-                        try:
-                            shutil.copy2(src_file, dst_file)
-                            self.logger.info(f"已复制文件: {src_file} -> {dst_file}")
-                            
-                            # 验证目标文件存在并可读
-                            if os.path.exists(dst_file):
-                                with open(dst_file, 'rb') as test_file:
-                                    # 读取一些数据以确保文件可读
-                                    data = test_file.read(100)
-                                    self.logger.info(f"目标文件 {dst_file} 已创建并可读，大小: {len(data)} 字节")
-                                result_files[ext] = dst_file
-                            else:
-                                self.logger.error(f"目标文件创建失败: {dst_file}")
-                        except Exception as e:
-                            self.logger.error(f"复制文件时出错: {src_file} -> {dst_file}, 错误: {str(e)}")
-                    
-                    # 如果成功获取了文件，返回结果
-                    if result_files:
-                        self.logger.info(f"从分子库成功复制 {source_name} 文件: {result_files}")
-                        return result_files
-                    else:
-                        self.logger.warning(f"无法从分子库获取有效的 {source_name} 文件")
-            except Exception as e:
-                self.logger.error(f"从分子库获取 {molecule_name} 文件时出错: {str(e)}")
-                # 继续尝试其他方法
-        
-        # 如果这是阳离子或阴离子，尝试从初始盐目录获取
-        if category in ["cations", "anions"]:
-            if category == "cations":
-                salt_dir = self.initial_salts_cations_dir
-            else:
-                salt_dir = self.initial_salts_anions_dir
+                    self.logger.error(f"使用SMILE生成{molecule_name}失败")
+                    return {}
             
-            if salt_dir and os.path.exists(salt_dir):
-                self.logger.info(f"尝试从初始离子目录获取 {molecule_name} 文件: {salt_dir}")
-                try:
-                    # 从初始离子目录复制文件
-                    files = self._copy_existing_molecule_files(molecule_name, salt_dir, molecule_subdir)
-                    if files:
-                        self.logger.info(f"成功从初始离子目录复制 {molecule_name} 文件: {files}")
-                        return files
-                    else:
-                        self.logger.warning(f"初始离子目录中没有找到 {molecule_name} 文件")
-                except Exception as e:
-                    self.logger.error(f"从初始离子目录复制 {molecule_name} 文件时出错: {str(e)}")
-            else:
-                self.logger.warning(f"初始离子目录不存在: {salt_dir}")
-        
-        # 如果这是溶剂，尝试从初始溶剂目录获取
-        if category == "solvents":
-            if self.initial_solvent_dir and os.path.exists(self.initial_solvent_dir):
-                self.logger.info(f"尝试从初始溶剂目录获取 {molecule_name} 文件: {self.initial_solvent_dir}")
-                try:
-                    # 从初始溶剂目录复制文件
-                    files = self._copy_existing_molecule_files(molecule_name, self.initial_solvent_dir, molecule_subdir)
-                    if files:
-                        self.logger.info(f"成功从初始溶剂目录复制 {molecule_name} 文件: {files}")
-                        return files
-                    else:
-                        self.logger.warning(f"初始溶剂目录中没有找到 {molecule_name} 文件")
-                except Exception as e:
-                    self.logger.error(f"从初始溶剂目录复制 {molecule_name} 文件时出错: {str(e)}")
-            else:
-                self.logger.warning(f"初始溶剂目录不存在: {self.initial_solvent_dir}")
-        
-            # 如果提供了SMILE，尝试使用LigParGen生成
-            if molecule_smile:
-                self.logger.info(f"尝试使用LigParGen生成 {molecule_name} 文件")
-                try:
-                    files = self._generate_molecule_files_with_ligpargen(molecule_info, molecule_dir)
-                    if files:
-                        self.logger.info(f"成功使用LigParGen生成 {molecule_name} 文件: {files}")
-                        
-                        # 如果生成了文件，将其添加到分子库
-                        if files and hasattr(self, 'use_molecule_library') and self.use_molecule_library and self.molecule_library:
-                            smile = molecule_info.get('smile')
-                            if smile:
-                                try:
-                                    self.molecule_library.add_molecule(molecule_name, files, "solvents", smile)
-                                    self.logger.info(f"已将溶剂 {molecule_name} 添加到分子库")
-                                except Exception as e:
-                                    self.logger.error(f"将溶剂 {molecule_name} 添加到分子库时出错: {str(e)}")
-                        
-                        return files
-                    else:
-                        self.logger.warning(f"使用LigParGen生成 {molecule_name} 文件失败")
-                except Exception as e:
-                    self.logger.error(f"使用LigParGen生成 {molecule_name} 文件时出错: {str(e)}")
-            else:
-                self.logger.warning(f"溶剂 {molecule_name} 没有提供SMILE字符串，无法使用LigParGen生成")
-        
-        # 所有尝试都失败
-        self.logger.error(f"无法生成或获取 {molecule_name} 文件")
-        return {}
+            except Exception as e:
+                self.logger.error(f"生成分子{molecule_name}时出错: {str(e)}")
+                return {}
 
     def _copy_existing_molecule_files(self, molecule_name, src_dir, dest_dir):
         """从初始目录复制现有分子文件
@@ -2081,23 +1947,18 @@ class MolyteWorkflow:
         equilibration_steps = parameters.get('equilibration_steps', 10000)
         production_steps = parameters.get('production_steps', 100000)
         
-        # 设置输出频率 - 使用自适应频率计算
-        try:
-            # 尝试使用自适应频率
-            thermo_freq, trj_freq_npt, trj_freq_nvt = calculate_adaptive_frequencies(self.formulation_data)
-            self.logger.info(f"使用自适应输出频率: thermo_freq={thermo_freq}, trj_freq_npt={trj_freq_npt}, trj_freq_nvt={trj_freq_nvt}")
-        except Exception as e:
-            # 如果自适应计算失败，使用标准频率
-            self.logger.warning(f"自适应频率计算失败，使用标准频率: {str(e)}")
-            thermo_freq, trj_freq_npt, trj_freq_nvt = get_standard_frequencies()
+        # 设置输出频率
+        thermo_freq = 1000
+        trj_freq_npt = 2000
+        trj_freq_nvt = 10000
         
         # 确定系统名称
         system_name = os.path.basename(system_lt_file).replace('.lt', '')
         
         # 获取系统成分信息
-        cations = self.formulation_data.get('cations', [])
-        anions = self.formulation_data.get('anions', [])
-        solvents = self.formulation_data.get('solvents', [])
+        cations = self.config.get('cations', [])
+        anions = self.config.get('anions', [])
+        solvents = self.config.get('solvents', [])
         
         # 创建元素列表
         # 这里需要根据实际情况调整，或者从LAMMPS数据文件中读取
@@ -2118,6 +1979,20 @@ class MolyteWorkflow:
                 
         element_list = " ".join(elements) if elements else "Li P F F F F F F C C C O O H H H H"
         
+        # 创建RDF对的信息
+        rdf_pairs = ""
+        rdf_titles = ""
+        
+        # Li-F RDF
+        if any(cat.get('name') == 'Li' for cat in cations) and any(an.get('name') == 'PF6' for an in anions):
+            rdf_pairs += "1 3 1 4 1 5 1 6 1 7 1 8 "
+            rdf_titles += "rdf_Li_F "
+        
+        # Li-O RDF
+        if any(cat.get('name') == 'Li' for cat in cations) and any(sol.get('name') == 'EC' for sol in solvents):
+            rdf_pairs += "1 11 1 12 "
+            rdf_titles += "rdf_Li_O "
+            
         # 生成LAMMPS输入文件内容
         in_file_content = f"""# LAMMPS输入脚本 - 生成于 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 # ----------------- Variable Section -----------------
@@ -2130,6 +2005,7 @@ include {system_name}.in.settings
 
 # 元素列表
 variable element_list index "{element_list}"
+variable rdf_pair string "{rdf_pairs}"
 
 # 模拟参数
 variable Nsteps_NPT equal {equilibration_steps}
@@ -2145,16 +2021,16 @@ variable Temp_NVT equal {temp}
 """
         
         # 添加分子组信息
-        for i, cat in enumerate(self.formulation_data.get('cations', []), start=1):
+        for i, cat in enumerate(cations, start=1):
             if 'name' in cat and cat.get('number', 0) > 0:
                 cat_name = cat['name'].replace('+', '').replace('-', '')
                 in_file_content += f'group Cation{i} type {i}\n'
                 
-        for i, anion in enumerate(self.formulation_data.get('anions', []), start=1):
+        for i, anion in enumerate(anions, start=1):
             if 'name' in anion and anion.get('number', 0) > 0:
                 anion_name = anion['name'].replace('+', '').replace('-', '')
-                in_file_content += f'group Anion{i} type {i+len(self.formulation_data.get("cations", []))}\n'
-        
+                in_file_content += f'group Anion{i} type {i+len(cations)}\n'
+                
         # 主模拟部分
         in_file_content += f"""
 # 输出设置
@@ -2192,26 +2068,28 @@ reset_timestep 0
 """
 
         # 添加MSD计算
-        for i, cation in enumerate(self.formulation_data.get('cations', []), start=1):
+        for i, cation in enumerate(cations, start=1):
             if 'name' in cation and cation.get('number', 0) > 0:
                 in_file_content += f'compute Ca{i} Cation{i} msd com yes\n'
                 in_file_content += f'fix Ca{i}msd Cation{i} ave/time ${{Freq_trj_nvt}} 1 ${{Freq_trj_nvt}} c_Ca{i}[1] c_Ca{i}[2] c_Ca{i}[3] c_Ca{i}[4] file out_cation{i}_msd.dat title1 "t msd msd msd msd_cation{i}" title2 "fs x y z total"\n'
                 
-        for i, anion in enumerate(self.formulation_data.get('anions', []), start=1):
+        for i, anion in enumerate(anions, start=1):
             if 'name' in anion and anion.get('number', 0) > 0:
                 in_file_content += f'compute An{i} Anion{i} msd com yes\n'
                 in_file_content += f'fix An{i}msd Anion{i} ave/time ${{Freq_trj_nvt}} 1 ${{Freq_trj_nvt}} c_An{i}[1] c_An{i}[2] c_An{i}[3] c_An{i}[4] file out_anion{i}_msd.dat title1 "t msd msd msd msd_anion{i}" title2 "fs x y z total"\n'
                 
-        # 添加NVT模拟部分，增强轨迹输出以便后处理
+        # 添加RDF计算和NVT模拟
         in_file_content += f"""
-# NVT生产阶段 - 增强轨迹输出以便后期处理
-# 输出完整轨迹供后处理分析（包含更多信息以便计算RDF和其他分析）
-dump trj_nvt all custom ${{Freq_trj_nvt}} NVT_${{outname}}.lammpstrj id element mol type x y z vx vy vz q
+# 计算径向分布函数RDF
+compute rdfc1 all rdf 100 ${{rdf_pair}}
+fix rdff1 all ave/time $(v_Nsteps_NVT/1000) 1000 ${{Nsteps_NVT}} c_rdfc1[*] file out_rdf.dat mode vector title3 "RDF {rdf_titles}"
+
+# NVT生产阶段
+dump trj_nvt all custom ${{Freq_trj_nvt}} NVT_${{outname}}.lammpstrj id element mol type x y z q
 dump_modify trj_nvt flush yes element ${{element_list}} sort id
 dump utrj_nvt all custom ${{Freq_trj_nvt}} NVT_${{outname}}_un.lammpstrj id element mol type xu yu zu ix iy iz q
 dump_modify utrj_nvt flush yes element ${{element_list}} sort id
 
-# 运行NVT
 fix fxnvt all nvt temp ${{Temp_NVT}} ${{Temp_NVT}} $(100.0*dt)
 run ${{Nsteps_NVT}}
 unfix fxnvt
@@ -2226,14 +2104,14 @@ write_dump all custom ${{infile}}_after_nvt.lammpstrj id element mol type x y z 
 """
 
         # 写入LAMMPS输入文件
-        in_file_path = os.path.join(output_dir, f"{self.formulation_data.get('name', 'unnamed')}.in")
+        in_file_path = os.path.join(output_dir, f"{system_name}.in")
         with open(in_file_path, 'w') as f:
             f.write(in_file_content)
             
         self.logger.info(f"生成的LAMMPS输入脚本: {in_file_path}")
         
         # 生成SLURM作业提交脚本
-        self._generate_job_script(self.formulation_data.get('name', 'unnamed'), in_file_path, output_dir)
+        self._generate_job_script(system_name, in_file_path, output_dir)
         
         return in_file_path
         
@@ -2269,7 +2147,7 @@ write_dump all custom ${{infile}}_after_nvt.lammpstrj id element mol type x y z 
 #SBATCH --job-name={job_name}
 #SBATCH --output=out.dat
 #SBATCH --error=err.dat
-#SBATCH --partition=cpu  # 使用 cpu 队列
+#SBATCH --partition=gpu  # 使用 cpu 队列
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task={ncpus}  # 设置每个任务的CPU核心数
