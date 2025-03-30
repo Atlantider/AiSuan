@@ -2118,20 +2118,6 @@ class MolyteWorkflow:
                 
         element_list = " ".join(elements) if elements else "Li P F F F F F F C C C O O H H H H"
         
-        # 创建RDF对的信息
-        rdf_pairs = ""
-        rdf_titles = ""
-        
-        # Li-F RDF
-        if any(cat.get('name') == 'Li' for cat in cations) and any(an.get('name') == 'PF6' for an in anions):
-            rdf_pairs += "1 3 1 4 1 5 1 6 1 7 1 8 "
-            rdf_titles += "rdf_Li_F "
-        
-        # Li-O RDF
-        if any(cat.get('name') == 'Li' for cat in cations) and any(sol.get('name') == 'EC' for sol in solvents):
-            rdf_pairs += "1 11 1 12 "
-            rdf_titles += "rdf_Li_O "
-            
         # 生成LAMMPS输入文件内容
         in_file_content = f"""# LAMMPS输入脚本 - 生成于 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 # ----------------- Variable Section -----------------
@@ -2144,7 +2130,6 @@ include {system_name}.in.settings
 
 # 元素列表
 variable element_list index "{element_list}"
-variable rdf_pair string "{rdf_pairs}"
 
 # 模拟参数
 variable Nsteps_NPT equal {equilibration_steps}
@@ -2217,18 +2202,16 @@ reset_timestep 0
                 in_file_content += f'compute An{i} Anion{i} msd com yes\n'
                 in_file_content += f'fix An{i}msd Anion{i} ave/time ${{Freq_trj_nvt}} 1 ${{Freq_trj_nvt}} c_An{i}[1] c_An{i}[2] c_An{i}[3] c_An{i}[4] file out_anion{i}_msd.dat title1 "t msd msd msd msd_anion{i}" title2 "fs x y z total"\n'
                 
-        # 添加RDF计算和NVT模拟
+        # 添加NVT模拟部分，增强轨迹输出以便后处理
         in_file_content += f"""
-# 计算径向分布函数RDF
-compute rdfc1 all rdf 100 ${rdf_pair}
-fix rdff1 all ave/time $(v_Nsteps_NVT/1000) 1000 ${Nsteps_NVT} c_rdfc1[*] file out_rdf.dat mode vector title3 "RDF {rdf_titles}"
-
-# NVT生产阶段
-dump trj_nvt all custom ${{Freq_trj_nvt}} NVT_${{outname}}.lammpstrj id element mol type x y z q
+# NVT生产阶段 - 增强轨迹输出以便后期处理
+# 输出完整轨迹供后处理分析（包含更多信息以便计算RDF和其他分析）
+dump trj_nvt all custom ${{Freq_trj_nvt}} NVT_${{outname}}.lammpstrj id element mol type x y z vx vy vz q
 dump_modify trj_nvt flush yes element ${{element_list}} sort id
 dump utrj_nvt all custom ${{Freq_trj_nvt}} NVT_${{outname}}_un.lammpstrj id element mol type xu yu zu ix iy iz q
 dump_modify utrj_nvt flush yes element ${{element_list}} sort id
 
+# 运行NVT
 fix fxnvt all nvt temp ${{Temp_NVT}} ${{Temp_NVT}} $(100.0*dt)
 run ${{Nsteps_NVT}}
 unfix fxnvt
