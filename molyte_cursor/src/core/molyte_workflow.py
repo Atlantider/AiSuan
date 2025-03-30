@@ -29,6 +29,9 @@ try:
 except ImportError:
     RDKIT_AVAILABLE = False
 
+# 导入自适应频率计算模块
+from molyte_cursor.src.utils.simulation_frequency_helper import calculate_adaptive_frequencies, get_standard_frequencies
+
 from molyte_cursor.src.io.inp_reader import read_inp_file, parse_inp_content
 from molyte_cursor.src.utils.simulation_helpers import SimulationHelper
 from molyte_cursor.src.utils.charge_modifier import replace_charges_in_lmp
@@ -2078,18 +2081,23 @@ class MolyteWorkflow:
         equilibration_steps = parameters.get('equilibration_steps', 10000)
         production_steps = parameters.get('production_steps', 100000)
         
-        # 设置输出频率
-        thermo_freq = 1000
-        trj_freq_npt = 2000
-        trj_freq_nvt = 10000
+        # 设置输出频率 - 使用自适应频率计算
+        try:
+            # 尝试使用自适应频率
+            thermo_freq, trj_freq_npt, trj_freq_nvt = calculate_adaptive_frequencies(self.formulation_data)
+            self.logger.info(f"使用自适应输出频率: thermo_freq={thermo_freq}, trj_freq_npt={trj_freq_npt}, trj_freq_nvt={trj_freq_nvt}")
+        except Exception as e:
+            # 如果自适应计算失败，使用标准频率
+            self.logger.warning(f"自适应频率计算失败，使用标准频率: {str(e)}")
+            thermo_freq, trj_freq_npt, trj_freq_nvt = get_standard_frequencies()
         
         # 确定系统名称
         system_name = os.path.basename(system_lt_file).replace('.lt', '')
         
         # 获取系统成分信息
-        cations = self.config.get('cations', [])
-        anions = self.config.get('anions', [])
-        solvents = self.config.get('solvents', [])
+        cations = self.formulation_data.get('cations', [])
+        anions = self.formulation_data.get('anions', [])
+        solvents = self.formulation_data.get('solvents', [])
         
         # 创建元素列表
         # 这里需要根据实际情况调整，或者从LAMMPS数据文件中读取
@@ -2152,16 +2160,16 @@ variable Temp_NVT equal {temp}
 """
         
         # 添加分子组信息
-        for i, cat in enumerate(cations, start=1):
+        for i, cat in enumerate(self.formulation_data.get('cations', []), start=1):
             if 'name' in cat and cat.get('number', 0) > 0:
                 cat_name = cat['name'].replace('+', '').replace('-', '')
                 in_file_content += f'group Cation{i} type {i}\n'
                 
-        for i, anion in enumerate(anions, start=1):
+        for i, anion in enumerate(self.formulation_data.get('anions', []), start=1):
             if 'name' in anion and anion.get('number', 0) > 0:
                 anion_name = anion['name'].replace('+', '').replace('-', '')
-                in_file_content += f'group Anion{i} type {i+len(cations)}\n'
-                
+                in_file_content += f'group Anion{i} type {i+len(self.formulation_data.get("cations", []))}\n'
+        
         # 主模拟部分
         in_file_content += f"""
 # 输出设置
@@ -2199,12 +2207,12 @@ reset_timestep 0
 """
 
         # 添加MSD计算
-        for i, cation in enumerate(cations, start=1):
+        for i, cation in enumerate(self.formulation_data.get('cations', []), start=1):
             if 'name' in cation and cation.get('number', 0) > 0:
                 in_file_content += f'compute Ca{i} Cation{i} msd com yes\n'
                 in_file_content += f'fix Ca{i}msd Cation{i} ave/time ${{Freq_trj_nvt}} 1 ${{Freq_trj_nvt}} c_Ca{i}[1] c_Ca{i}[2] c_Ca{i}[3] c_Ca{i}[4] file out_cation{i}_msd.dat title1 "t msd msd msd msd_cation{i}" title2 "fs x y z total"\n'
                 
-        for i, anion in enumerate(anions, start=1):
+        for i, anion in enumerate(self.formulation_data.get('anions', []), start=1):
             if 'name' in anion and anion.get('number', 0) > 0:
                 in_file_content += f'compute An{i} Anion{i} msd com yes\n'
                 in_file_content += f'fix An{i}msd Anion{i} ave/time ${{Freq_trj_nvt}} 1 ${{Freq_trj_nvt}} c_An{i}[1] c_An{i}[2] c_An{i}[3] c_An{i}[4] file out_anion{i}_msd.dat title1 "t msd msd msd msd_anion{i}" title2 "fs x y z total"\n'
@@ -2212,8 +2220,8 @@ reset_timestep 0
         # 添加RDF计算和NVT模拟
         in_file_content += f"""
 # 计算径向分布函数RDF
-compute rdfc1 all rdf 100 ${{rdf_pair}}
-fix rdff1 all ave/time $(v_Nsteps_NVT/1000) 1000 ${{Nsteps_NVT}} c_rdfc1[*] file out_rdf.dat mode vector title3 "RDF {rdf_titles}"
+compute rdfc1 all rdf 100 ${rdf_pair}
+fix rdff1 all ave/time $(v_Nsteps_NVT/1000) 1000 ${Nsteps_NVT} c_rdfc1[*] file out_rdf.dat mode vector title3 "RDF {rdf_titles}"
 
 # NVT生产阶段
 dump trj_nvt all custom ${{Freq_trj_nvt}} NVT_${{outname}}.lammpstrj id element mol type x y z q
@@ -2235,14 +2243,14 @@ write_dump all custom ${{infile}}_after_nvt.lammpstrj id element mol type x y z 
 """
 
         # 写入LAMMPS输入文件
-        in_file_path = os.path.join(output_dir, f"{system_name}.in")
+        in_file_path = os.path.join(output_dir, f"{self.formulation_data.get('name', 'unnamed')}.in")
         with open(in_file_path, 'w') as f:
             f.write(in_file_content)
             
         self.logger.info(f"生成的LAMMPS输入脚本: {in_file_path}")
         
         # 生成SLURM作业提交脚本
-        self._generate_job_script(system_name, in_file_path, output_dir)
+        self._generate_job_script(self.formulation_data.get('name', 'unnamed'), in_file_path, output_dir)
         
         return in_file_path
         
