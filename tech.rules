@@ -1,0 +1,162 @@
+// AiSuan电解液模拟系统技术架构规则
+
+// 前端技术架构 (materialsci-platform)
+const frontendTechStack = {
+  "框架": "React + TypeScript",
+  "UI库": "Ant Design",
+  "构建工具": "Vite",
+  "状态管理": "React Hooks + Context API",
+  "路由管理": "React Router",
+  "HTTP客户端": "Axios"
+};
+
+// 前端并发处理特点
+const frontendConcurrentFeatures = [
+  "使用React hooks (useState, useEffect)管理异步操作和状态更新",
+  "多端口服务：开发服务器自动检测端口占用并递增使用新端口(5173-5178)",
+  "非阻塞式API调用：使用异步Promise和async/await处理API请求",
+  "API请求状态管理：使用loading状态防止重复提交并提供用户反馈",
+  "表单验证和提交逻辑分离，确保数据一致性"
+];
+
+// 前端电解液服务亮点
+const frontendElectrolyteFeatures = [
+  "离子配对算法：智能处理多价离子(Mg²⁺、Al³⁺)的盐配对，确保电荷平衡",
+  "详细的调试日志：可视化日志抽屉显示处理过程",
+  "动态表单：根据用户输入自动计算分子数量和浓度",
+  "实时数据验证：阴阳离子和溶剂的数量和比例验证",
+  "模拟可视化：直观展示配方组成和计算结果"
+];
+
+// 后端技术架构 (backend)
+const backendTechStack = {
+  "Web框架": "Django REST Framework",
+  "任务队列": "Celery",
+  "消息代理": "Redis",
+  "数据库": "PostgreSQL/SQLite",
+  "身份验证": "JWT + Session",
+  "API风格": "RESTful"
+};
+
+// 后端并发处理特点
+const backendConcurrentFeatures = [
+  "Celery任务队列：长时间运行的计算任务被异步处理，不阻塞web请求",
+  "任务状态跟踪：使用WorkflowState和WorkflowTask模型跟踪任务进度",
+  "任务重启机制：能够从失败点恢复任务执行",
+  "并发任务限制：防止资源过载",
+  "任务优先级：关键任务优先执行",
+  "结果缓存：重复计算结果缓存提高响应速度"
+];
+
+// 后端电解液服务模型设计
+const backendDataModels = [
+  "Formulation: 存储电解液配方信息(阴阳离子、溶剂等)",
+  "Calculation: 计算任务记录和参数存储",
+  "InputFile: 保存生成的模拟输入文件",
+  "SimulationResult: 存储计算结果和输出文件",
+  "WorkflowState: 跟踪整体工作流状态",
+  "WorkflowTask: 记录单个任务的状态和进度"
+];
+
+// 核心计算模块 (molyte_cursor)
+const computeModuleTechStack = {
+  "主要语言": "Python",
+  "科学计算库": "NumPy, SciPy, Pandas",
+  "分子动力学": "LAMMPS集成",
+  "化学信息学": "RDKit",
+  "工作流引擎": "自定义MolyteWorkflow",
+  "集群整合": "SLURM作业调度"
+};
+
+// 分子计算模块特点
+const computeModuleFeatures = [
+  "模块化设计：核心计算逻辑分解为可独立执行的步骤",
+  "高效文件IO：优化处理大量分子文件的读写操作",
+  "参数化配置：通过配置文件控制计算行为，无需代码修改",
+  "错误恢复：可从检查点恢复计算",
+  "多级并行：支持任务级和数据级并行计算",
+  "适应性计算：根据可用资源自动调整计算规模"
+];
+
+// 数据库架构
+const databaseArchitecture = {
+  "主数据库": "PostgreSQL/SQLite - 存储用户、配方和计算任务信息",
+  "缓存系统": "Redis - 任务队列和结果缓存",
+  "文件存储": "本地文件系统 - 存储大型输入/输出文件",
+  "模型关系": "复杂多对多关系处理配方组分和计算任务",
+  "数据迁移": "Django ORM自动迁移管理数据库结构演化",
+  "查询优化": "使用索引和延迟加载优化查询性能"
+};
+
+// 多层架构与通信
+const systemArchitecture = [
+  "前端 → 后端：RESTful API通信，JWT认证",
+  "后端 → 计算模块：Python模块导入和命令行调用",
+  "计算模块 → 集群：SLURM作业提交和监控",
+  "任务状态更新：Celery任务 → Django信号 → WebSocket → 前端",
+  "结果获取：计算节点 → 共享文件系统 → 后端API → 前端展示"
+];
+
+// 部署架构
+const deploymentArchitecture = {
+  "Web服务": "Nginx + Gunicorn (Django)",
+  "前端服务": "Node.js/Nginx静态文件服务",
+  "任务队列": "Celery worker(s)",
+  "消息代理": "Redis服务",
+  "数据库": "PostgreSQL服务",
+  "计算集群": "SLURM管理的计算节点"
+};
+
+// 并发处理和扩展性总结
+const concurrencyAndScalability = [
+  "多层次并发模型：UI层(异步API) + 服务层(任务队列) + 计算层(集群并行)",
+  "垂直扩展：增加单节点资源处理更复杂的计算",
+  "水平扩展：增加计算节点处理更多并行任务",
+  "自动端口管理：前端服务支持多实例(5173-5178自动递增)",
+  "动态负载均衡：根据任务复杂度分配计算资源",
+  "模块化设计：可独立扩展任何组件而不影响整体架构"
+];
+
+// 安全架构
+const securityArchitecture = [
+  "用户认证：JWT令牌 + Session认证",
+  "授权机制：基于角色的访问控制",
+  "API安全：请求验证和速率限制",
+  "数据验证：输入数据严格验证和清理",
+  "计算隔离：任务在独立环境中执行",
+  "敏感数据保护：参数和结果加密存储"
+];
+
+// 监控和日志
+const monitoringAndLogging = {
+  "应用日志": "结构化JSON日志记录操作和错误",
+  "任务监控": "Celery Flower监控任务执行",
+  "计算监控": "SLURM作业状态跟踪",
+  "服务健康": "端点健康检查",
+  "性能指标": "关键操作的时间和资源使用统计",
+  "异常跟踪": "详细错误堆栈和上下文捕获"
+};
+
+// 开发实践和标准
+const developmentPractices = [
+  "使用TypeScript强类型确保代码质量",
+  "遵循PEP 8规范进行Python开发",
+  "使用类型提示增强代码可读性",
+  "编写详细文档和注释",
+  "使用logging模块取代print语句",
+  "使用异步任务处理长时间运行的操作",
+  "前端组件化开发提高可维护性"
+];
+
+// 新模块实施建议
+const implementationGuidelines = [
+  "前端：复用ElectrolyteCalculation.tsx的表单处理和API调用模式",
+  "前端：利用类似的日志和调试抽屉机制进行问题排查",
+  "前端：保持异步操作的非阻塞特性",
+  "后端：参照electrolyte应用的models.py和tasks.py设计数据模型和任务",
+  "后端：复用Celery任务队列机制处理长时间运行的计算",
+  "后端：保持API接口的一致性，方便前端集成",
+  "计算：参照molyte_workflow.py的设计模式",
+  "计算：保持模块化设计，便于维护和扩展",
+  "计算：充分利用Slurm集群资源"
+]; 
