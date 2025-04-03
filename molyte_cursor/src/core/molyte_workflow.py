@@ -32,7 +32,6 @@ except ImportError:
 from molyte_cursor.src.io.inp_reader import read_inp_file, parse_inp_content
 from molyte_cursor.src.utils.simulation_helpers import SimulationHelper
 from molyte_cursor.src.utils.charge_modifier import replace_charges_in_lmp
-from molyte_cursor.src.utils.molecule_library import MoleculeLibrary  # 导入分子库类
 
 # 设置全局日志记录器
 logger = logging.getLogger("MolyteWorkflow")
@@ -175,21 +174,6 @@ class MolyteWorkflow:
         # 初始化外部程序路径
         self._set_external_paths()
         
-        # 初始化分子库
-        self.molecule_library_path = self.paths_config.get("paths", {}).get("molecule_library", "molecules_library")
-        self.logger.info(f"分子库初始化成功: {self.molecule_library_path}")
-        
-        # 检查分子库是否为空
-        if os.path.exists(self.molecule_library_path) and os.listdir(self.molecule_library_path):
-            self.logger.info("分子库不为空，跳过初始分子导入")
-        else:
-            self.logger.warning("分子库为空或不存在，后续将尝试初始化")
-        
-        # 记录外部程序路径
-        self.logger.info("外部程序路径设置:")
-        for key, value in self.paths_config.get("paths", {}).items():
-            self.logger.info(f"  {key}: {value}")
-        
         # 记录配置信息
         if self.config:
             self.logger.info("初始化时配置: 使用提供的config")
@@ -273,64 +257,12 @@ class MolyteWorkflow:
         self.initial_salts_path = paths.get('initial_salts', os.path.join(molyte_base_path, 'data', 'initial_salts'))
         self.initial_solvent_path = paths.get('initial_solvent', os.path.join(molyte_base_path, 'data', 'initial_solvent'))
         
-        # 设置分子库路径
-        self.molecules_library_path = paths.get('molecules_library', os.path.join(molyte_base_path, 'molecules_library'))
-        
-        # 确保分子库目录结构存在
-        try:
-            # 创建分子库主目录
-            os.makedirs(self.molecules_library_path, exist_ok=True)
-            
-            # 创建必要的子目录结构
-            metadata_dir = os.path.join(self.molecules_library_path, "metadata")
-            ions_dir = os.path.join(self.molecules_library_path, "ions")
-            cations_dir = os.path.join(ions_dir, "cations")
-            anions_dir = os.path.join(ions_dir, "anions")
-            solvents_dir = os.path.join(self.molecules_library_path, "solvents")
-            
-            os.makedirs(metadata_dir, exist_ok=True)
-            os.makedirs(cations_dir, exist_ok=True)
-            os.makedirs(anions_dir, exist_ok=True)
-            os.makedirs(solvents_dir, exist_ok=True)
-            
-            # 确保元数据文件存在
-            molecules_json = os.path.join(metadata_dir, "molecules.json")
-            smiles_index_json = os.path.join(metadata_dir, "smiles_index.json")
-            
-            if not os.path.exists(molecules_json):
-                with open(molecules_json, 'w') as f:
-                    json.dump({"ions": {"cations": [], "anions": []}, "solvents": []}, f, indent=2)
-                self.logger.info(f"创建了新的分子库元数据文件: {molecules_json}")
-                
-            if not os.path.exists(smiles_index_json):
-                with open(smiles_index_json, 'w') as f:
-                    json.dump({}, f, indent=2)
-                self.logger.info(f"创建了新的SMILES索引文件: {smiles_index_json}")
-            
-            # 导入MoleculeLibrary模块
-            from src.utils.molecule_library import MoleculeLibrary
-            
-            # 初始化分子库
-            self.molecule_library = MoleculeLibrary(self.molecules_library_path)
-            self.logger.info(f"分子库初始化成功: {self.molecules_library_path}")
-            self.use_molecule_library = True
-            
-            # 导入初始分子到分子库(如果需要)
-            self._import_initial_molecules_to_library()
-        except ImportError as e:
-            self.logger.warning(f"导入MoleculeLibrary模块失败: {str(e)}，将使用传统文件处理")
-            self.molecule_library = None
-            self.use_molecule_library = False
-        except Exception as e:
-            self.logger.warning(f"分子库初始化失败: {str(e)}，将使用传统文件处理")
-            self.molecule_library = None
-            self.use_molecule_library = False
+        # 确保必要的目录存在
+        os.makedirs(self.initial_salts_path, exist_ok=True)
+        os.makedirs(self.initial_solvent_path, exist_ok=True)
         
         # 是否使用RESP电荷
         self.use_resp_charges = paths.get('use_resp_charges', True)
-        
-        # 加载分子库文件
-        self.exist_molecule_path = os.path.join(self.common_data_path, 'exist_molecule.json') if self.common_data_path else None
         
         # 记录路径信息
         self.logger.info("外部程序路径设置:")
@@ -341,106 +273,8 @@ class MolyteWorkflow:
         self.logger.info(f"  resp: {self.resp_path}")
         self.logger.info(f"  通用数据路径: {self.common_data_path}")
         self.logger.info(f"  电荷保存路径: {self.charge_save_path}")
-        self.logger.info(f"  分子库文件: {self.exist_molecule_path}")
         self.logger.info(f"  初始盐路径: {self.initial_salts_path}")
         self.logger.info(f"  初始溶剂路径: {self.initial_solvent_path}")
-        self.logger.info(f"  分子库路径: {self.molecules_library_path}")
-        self.logger.info(f"  使用分子库: {self.use_molecule_library}")
-    
-    def _import_initial_molecules_to_library(self):
-        """导入初始分子到分子库
-        
-        从初始盐和溶剂目录导入分子到分子库，仅在分子库为空时执行
-        """
-        if not hasattr(self, 'molecule_library') or not self.molecule_library:
-            return
-            
-        # 检查分子库是否为空
-        molecules = self.molecule_library.list_molecules()
-        if molecules.get("ions", {}).get("cations") or molecules.get("ions", {}).get("anions") or molecules.get("solvents"):
-            self.logger.info("分子库不为空，跳过初始分子导入")
-            return
-            
-        self.logger.info("检测到空分子库，开始导入初始分子")
-        
-        # 导入初始盐
-        if os.path.exists(self.initial_salts_path):
-            cation_names = []
-            anion_names = []
-            
-            # 为了简单起见，假设所有文件名都是分子名称
-            for filename in os.listdir(self.initial_salts_path):
-                if filename.endswith('.pdb'):
-                    base_name = os.path.splitext(filename)[0]
-                    # 简单规则：带+的是阳离子，带-的是阴离子
-                    if '+' in base_name:
-                        cation_names.append(base_name)
-                    elif '-' in base_name:
-                        anion_names.append(base_name)
-            
-            # 导入阳离子
-            for name in cation_names:
-                files = {}
-                for ext in ['pdb', 'lt', 'lmp']:
-                    file_path = os.path.join(self.initial_salts_path, f"{name}.{ext}")
-                    if os.path.exists(file_path):
-                        files[ext] = file_path
-                
-                if files:
-                    try:
-                        self.molecule_library.add_molecule(name, files, "cations")
-                        self.logger.info(f"已导入初始阳离子: {name}")
-                    except Exception as e:
-                        self.logger.warning(f"导入初始阳离子 {name} 失败: {str(e)}")
-            
-            # 导入阴离子
-            for name in anion_names:
-                files = {}
-                for ext in ['pdb', 'lt', 'lmp']:
-                    file_path = os.path.join(self.initial_salts_path, f"{name}.{ext}")
-                    if os.path.exists(file_path):
-                        files[ext] = file_path
-                
-                if files:
-                    try:
-                        self.molecule_library.add_molecule(name, files, "anions")
-                        self.logger.info(f"已导入初始阴离子: {name}")
-                    except Exception as e:
-                        self.logger.warning(f"导入初始阴离子 {name} 失败: {str(e)}")
-        
-        # 导入初始溶剂
-        if os.path.exists(self.initial_solvent_path):
-            # 获取初始溶剂目录下的所有.pdb文件
-            solvent_files = [f for f in os.listdir(self.initial_solvent_path) if f.endswith('.pdb')]
-            
-            for pdb_file in solvent_files:
-                name = os.path.splitext(pdb_file)[0]
-                files = {}
-                
-                # 收集所有相关文件
-                for ext in ['pdb', 'lt', 'lmp', 'chg']:
-                    file_path = os.path.join(self.initial_solvent_path, f"{name}.{ext}")
-                    if os.path.exists(file_path):
-                        files[ext] = file_path
-                
-                # 查找或创建SMILE文件
-                smile_file = os.path.join(self.initial_solvent_path, f"{name}.smile")
-                smile = None
-                
-                if os.path.exists(smile_file):
-                    with open(smile_file, 'r') as f:
-                        smile = f.read().strip()
-                
-                if files and smile:
-                    try:
-                        self.molecule_library.add_molecule(name, files, "solvents", smile)
-                        self.logger.info(f"已导入初始溶剂: {name}, SMILE: {smile}")
-                    except Exception as e:
-                        self.logger.warning(f"导入初始溶剂 {name} 失败: {str(e)}")
-                elif files:
-                    self.logger.warning(f"溶剂 {name} 缺少SMILE，无法导入到分子库")
-        
-        self.logger.info("初始分子导入完成")
     
     @classmethod
     def from_formulation(cls, formulation_data=None, work_dir=None, output_dir=None,
@@ -1193,10 +1027,6 @@ class MolyteWorkflow:
         """
         self.logger.info("开始生成输入文件")
         
-        # 设置使用分子库标志
-        self.use_molecule_library = hasattr(self, 'molecule_library') and self.molecule_library is not None
-        self.logger.info(f"使用分子库: {self.use_molecule_library}")
-        
         # 创建分子文件目录
         molecule_dir = os.path.join(self.work_dir, "molecules")
         os.makedirs(molecule_dir, exist_ok=True)
@@ -1205,47 +1035,101 @@ class MolyteWorkflow:
         self.logger.info("处理分子文件")
         molecules_info = []
         
-        # 处理阳离子
+        # 合并相同阳离子
+        self.logger.info("合并相同名称的阳离子")
+        cations_map = {}
         for cation in self.formulation_data.get("cations", []):
             molecule_name = cation.get("name")
-            self.logger.info(f"处理阳离子: {molecule_name}")
-            files = self._generate_molecule_files(cation, molecule_dir)
-            if files:
-                sanitized_name = molecule_name.replace('+', '').replace('-', '')
-                cation["sanitized_name"] = sanitized_name
-                cation["files"] = files
-                molecules_info.append(cation)
-                self.logger.info(f"阳离子 {molecule_name} 文件处理完成")
-            else:
-                self.logger.error(f"阳离子 {molecule_name} 文件生成失败")
+            if not molecule_name:
+                self.logger.warning("发现没有名称的阳离子，跳过")
+                continue
                 
-        # 处理阴离子
+            if molecule_name in cations_map:
+                existing_cation = cations_map[molecule_name]
+                existing_number = existing_cation.get("number", 0)
+                new_number = cation.get("number", 0)
+                existing_cation["number"] = existing_number + new_number
+                self.logger.info(f"合并阳离子 {molecule_name}: {existing_number} + {new_number} = {existing_cation['number']}")
+            else:
+                cations_map[molecule_name] = cation.copy()
+                self.logger.info(f"添加新阳离子 {molecule_name}: {cation.get('number', 0)}")
+        
+        # 合并相同阴离子
+        self.logger.info("合并相同名称的阴离子")
+        anions_map = {}
         for anion in self.formulation_data.get("anions", []):
             molecule_name = anion.get("name")
-            self.logger.info(f"处理阴离子: {molecule_name}")
-            files = self._generate_molecule_files(anion, molecule_dir)
-            if files:
-                sanitized_name = molecule_name.replace('+', '').replace('-', '')
-                anion["sanitized_name"] = sanitized_name
-                anion["files"] = files
-                molecules_info.append(anion)
-                self.logger.info(f"阴离子 {molecule_name} 文件处理完成")
+            if not molecule_name:
+                self.logger.warning("发现没有名称的阴离子，跳过")
+                continue
+                
+            if molecule_name in anions_map:
+                existing_anion = anions_map[molecule_name]
+                existing_number = existing_anion.get("number", 0)
+                new_number = anion.get("number", 0)
+                existing_anion["number"] = existing_number + new_number
+                self.logger.info(f"合并阴离子 {molecule_name}: {existing_number} + {new_number} = {existing_anion['number']}")
             else:
-                self.logger.error(f"阴离子 {molecule_name} 文件生成失败")
+                anions_map[molecule_name] = anion.copy()
+                self.logger.info(f"添加新阴离子 {molecule_name}: {anion.get('number', 0)}")
+        
+        # 处理合并后的阳离子
+        merged_cations = list(cations_map.values())
+        self.logger.info(f"处理合并后的阳离子: {len(merged_cations)}个")
+        for cation in merged_cations:
+            molecule_name = cation.get("name")
+            self.logger.info(f"处理阳离子: {molecule_name}, 数量: {cation.get('number', 0)}")
+            # 添加类型标识
+            cation["type"] = "cation"
+            try:
+                files = self._generate_molecule_files(cation, molecule_dir)
+                if files:
+                    sanitized_name = molecule_name.replace('+', '').replace('-', '')
+                    cation["sanitized_name"] = sanitized_name
+                    cation["files"] = files
+                    molecules_info.append(cation)
+                    self.logger.info(f"阳离子 {molecule_name} 文件处理完成")
+            except Exception as e:
+                self.logger.error(f"阳离子 {molecule_name} 文件生成失败: {str(e)}")
+                raise RuntimeError(f"阳离子 {molecule_name} 文件生成失败: {str(e)}")
+                
+        # 处理合并后的阴离子
+        merged_anions = list(anions_map.values())
+        self.logger.info(f"处理合并后的阴离子: {len(merged_anions)}个")
+        for anion in merged_anions:
+            molecule_name = anion.get("name")
+            self.logger.info(f"处理阴离子: {molecule_name}, 数量: {anion.get('number', 0)}")
+            # 添加类型标识
+            anion["type"] = "anion"
+            try:
+                files = self._generate_molecule_files(anion, molecule_dir)
+                if files:
+                    sanitized_name = molecule_name.replace('+', '').replace('-', '')
+                    anion["sanitized_name"] = sanitized_name
+                    anion["files"] = files
+                    molecules_info.append(anion)
+                    self.logger.info(f"阴离子 {molecule_name} 文件处理完成")
+            except Exception as e:
+                self.logger.error(f"阴离子 {molecule_name} 文件生成失败: {str(e)}")
+                raise RuntimeError(f"阴离子 {molecule_name} 文件生成失败: {str(e)}")
                 
         # 处理溶剂
         for solvent in self.formulation_data.get("solvents", []):
             molecule_name = solvent.get("name")
             self.logger.info(f"处理溶剂: {molecule_name}")
-            files = self._generate_molecule_files(solvent, molecule_dir)
-            if files:
-                sanitized_name = molecule_name.replace('+', '').replace('-', '')
-                solvent["sanitized_name"] = sanitized_name
-                solvent["files"] = files
-                molecules_info.append(solvent)
-                self.logger.info(f"溶剂 {molecule_name} 文件处理完成")
-            else:
-                self.logger.error(f"溶剂 {molecule_name} 文件生成失败")
+            # 添加类型标识
+            solvent["type"] = "solvent"
+            try:
+                files = self._generate_molecule_files(solvent, molecule_dir)
+                if files:
+                    sanitized_name = molecule_name.replace('+', '').replace('-', '')
+                    solvent["sanitized_name"] = sanitized_name
+                    solvent["files"] = files
+                    molecules_info.append(solvent)
+                    self.logger.info(f"溶剂 {molecule_name} 文件处理完成")
+            except Exception as e:
+                self.logger.error(f"溶剂 {molecule_name} 文件生成失败: {str(e)}")
+                raise RuntimeError(f"溶剂 {molecule_name} 文件生成失败: {str(e)}")
         
         # 如果没有任何分子处理成功，抛出异常
         if not molecules_info:
@@ -1281,61 +1165,204 @@ class MolyteWorkflow:
         return self.generated_files
     
     def _generate_molecule_files(self, molecule, molecule_dir):
-        """处理分子文件，如果分子库中不存在则尝试使用SMILE生成"""
+        """处理分子文件，对于阴阳离子直接检查initial_salts中，对于溶剂检查initial_solvent或用ligpargen生成"""
         
         # 获取分子名称和信息
         molecule_name = molecule.get("name")
         smile = molecule.get("smile", "")
         
-        # 从分子库获取
-        source_dir = self.molecule_library._get_molecule_path(molecule_name)
-        self.logger.info(f"分子库中的源目录: {source_dir}")
+        # 根据调用的情况确定分子类型，不再尝试从名称判断
+        # 检查molecule对象来自哪个列表
+        molecule_type = molecule.get("type", "unknown")
         
-        if source_dir and os.path.exists(source_dir):
-            # 分子库中存在，复制文件
-            for file in os.listdir(source_dir):
-                src_file = os.path.join(source_dir, file)
-                dst_file = os.path.join(molecule_dir, file)
-                shutil.copy2(src_file, dst_file)
-            return self._get_molecule_files(molecule_dir)
-        else:
-            # 分子库中不存在，尝试使用SMILE生成
-            self.logger.info(f"分子库中不存在{molecule_name}，尝试使用SMILE生成")
+        # 为阴阳离子检查initial_salts目录
+        if molecule_type == "cation" or molecule_type == "anion":
+            self.logger.info(f"为{molecule_type} {molecule_name} 检查initial_salts目录")
+            salt_files = {}
             
-            if not smile:
-                self.logger.error(f"无法生成{molecule_name}：未提供SMILE字符串")
-                return {}
-            
-            try:
-                # 创建临时目录用于生成分子文件
-                temp_dir = os.path.join(molecule_dir, "temp_gen")
-                os.makedirs(temp_dir, exist_ok=True)
-                
-                # 使用ligpargen处理SMILE
-                self.logger.info(f"使用ligpargen处理SMILE: {smile}")
-                success = self.generate_molecule_from_smile(smile, molecule_name, temp_dir)
-                
-                if success:
-                    # 移动生成的文件到分子目录
-                    for file in os.listdir(temp_dir):
-                        src_file = os.path.join(temp_dir, file)
-                        dst_file = os.path.join(molecule_dir, file)
-                        shutil.move(src_file, dst_file)
-                    
-                    # 清理临时目录
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    
-                    # 保存到分子库中
-                    self.molecule_library.add_molecule(molecule_name, molecule_dir)
-                    
-                    return self._get_molecule_files(molecule_dir)
+            # 检查必要的文件扩展名: lt 和 pdb
+            for ext in ['lt', 'pdb']:
+                file_path = os.path.join(self.initial_salts_path, f"{molecule_name}.{ext}")
+                if os.path.exists(file_path):
+                    # 复制到目标目录
+                    dst_file = os.path.join(molecule_dir, f"{molecule_name}.{ext}")
+                    shutil.copy2(file_path, dst_file)
+                    salt_files[ext] = dst_file
+                    self.logger.info(f"已复制文件: {file_path} -> {dst_file}")
                 else:
-                    self.logger.error(f"使用SMILE生成{molecule_name}失败")
-                    return {}
+                    self.logger.error(f"找不到{molecule_name}的{ext}文件: {file_path}")
             
+            # 验证是否找到了所有必要的文件
+            if 'lt' in salt_files and 'pdb' in salt_files:
+                self.logger.info(f"成功找到{molecule_type} {molecule_name} 的所有必要文件")
+                return salt_files
+            else:
+                missing_files = []
+                if 'lt' not in salt_files:
+                    missing_files.append('lt')
+                if 'pdb' not in salt_files:
+                    missing_files.append('pdb')
+                
+                self.logger.error(f"{molecule_type} {molecule_name} 缺少必要的文件: {', '.join(missing_files)}")
+                raise RuntimeError(f"{molecule_type} {molecule_name} 缺少必要的文件: {', '.join(missing_files)}")
+        
+        # 对于溶剂，先检查initial_solvent目录
+        elif molecule_type == "solvent":
+            self.logger.info(f"处理溶剂: {molecule_name}")
+            initial_solvent_dir = self.initial_solvent_path
+            
+            if hasattr(self, 'initial_solvent_path') and os.path.exists(initial_solvent_dir):
+                # 检查initial_solvent目录中是否有该溶剂
+                self.logger.info(f"检查initial_solvent目录中是否有溶剂 {molecule_name}")
+                solvent_files = {}
+                
+                for ext in ['pdb', 'lt', 'lmp', 'chg']:
+                    file_path = os.path.join(initial_solvent_dir, f"{molecule_name}.{ext}")
+                    if os.path.exists(file_path):
+                        # 复制到目标目录
+                        dst_file = os.path.join(molecule_dir, f"{molecule_name}.{ext}")
+                        shutil.copy2(file_path, dst_file)
+                        solvent_files[ext] = dst_file
+                        self.logger.info(f"从initial_solvent复制文件: {file_path} -> {dst_file}")
+                
+                # 如果找到了必要的文件，直接返回
+                if 'pdb' in solvent_files and 'lt' in solvent_files:
+                    self.logger.info(f"在initial_solvent中成功找到溶剂 {molecule_name} 的必要文件")
+                    # 保存smile以便后续查找
+                    if smile:
+                        self._update_exist_solvent_json(molecule_name)
+                    return solvent_files
+            
+            # 如果没找到溶剂或缺少必要文件，使用ligpargen生成
+            if not smile:
+                self.logger.error(f"无法生成溶剂 {molecule_name}：未提供SMILE字符串")
+                raise RuntimeError(f"无法生成溶剂 {molecule_name}：未提供SMILE字符串")
+            
+            # 创建临时目录用于生成分子文件
+            temp_dir = os.path.join(molecule_dir, "temp_gen")
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            # 使用ligpargen处理SMILE
+            self.logger.info(f"使用ligpargen处理SMILE生成溶剂: {smile}")
+            try:
+                # 生成溶剂文件
+                result = self._generate_molecule_files_with_ligpargen(
+                    {'name': molecule_name, 'smile': smile}, 
+                    temp_dir
+                )
+                
+                if not result:
+                    raise RuntimeError(f"使用ligpargen生成溶剂 {molecule_name} 失败")
+                
+                # 移动生成的文件到目标目录
+                for ext, file_path in result.items():
+                    dst_file = os.path.join(molecule_dir, f"{molecule_name}.{ext}")
+                    shutil.copy2(file_path, dst_file)
+                    result[ext] = dst_file
+                    self.logger.info(f"复制生成的文件: {file_path} -> {dst_file}")
+                
+                # 如果有lmp文件但没有lt文件，从lmp生成lt
+                if 'lmp' in result and 'lt' not in result:
+                    lt_file = os.path.join(molecule_dir, f"{molecule_name}.lt")
+                    self._generate_lt_from_lmp(result['lmp'], lt_file, molecule_name)
+                    if os.path.exists(lt_file):
+                        result['lt'] = lt_file
+                        self.logger.info(f"从LMP生成LT文件: {lt_file}")
+                
+                # 为resp生成的溶剂保存到initial_solvent
+                if 'pdb' in result and 'lt' in result:
+                    self.logger.info(f"将生成的溶剂 {molecule_name} 保存到initial_solvent")
+                    
+                    # 确保initial_solvent目录存在
+                    os.makedirs(initial_solvent_dir, exist_ok=True)
+                    
+                    # 复制文件到initial_solvent
+                    for ext, file_path in result.items():
+                        dst_file = os.path.join(initial_solvent_dir, f"{molecule_name}.{ext}")
+                        shutil.copy2(file_path, dst_file)
+                        self.logger.info(f"复制到initial_solvent: {file_path} -> {dst_file}")
+                    
+                    # 保存smile信息
+                    if smile:
+                        self._update_exist_solvent_json(molecule_name)
+                
+                # 清理临时目录
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                
+                return result
+                
             except Exception as e:
-                self.logger.error(f"生成分子{molecule_name}时出错: {str(e)}")
-                return {}
+                self.logger.error(f"生成溶剂 {molecule_name} 时出错: {str(e)}")
+                raise RuntimeError(f"生成溶剂 {molecule_name} 时出错: {str(e)}")
+        
+        # 未知分子类型
+        else:
+            self.logger.error(f"未知分子类型: {molecule_type} - {molecule_name}")
+            raise RuntimeError(f"未知分子类型: {molecule_type} - {molecule_name}")
+
+    def _get_molecule_files(self, directory):
+        """扫描目录并返回找到的分子文件
+        
+        Args:
+            directory: 要扫描的目录路径
+            
+        Returns:
+            Dict: 文件类型到文件路径的映射
+        """
+        self.logger.info(f"扫描目录中的分子文件: {directory}")
+        
+        if not os.path.exists(directory):
+            self.logger.error(f"目录不存在: {directory}")
+            return {}
+            
+        result_files = {}
+        
+        # 常见的分子文件扩展名
+        extensions = ["pdb", "lt", "chg", "lmp"]
+        
+        # 扫描目录中的文件
+        for file in os.listdir(directory):
+            file_path = os.path.join(directory, file)
+            if os.path.isfile(file_path):
+                # 获取文件扩展名
+                _, ext = os.path.splitext(file)
+                ext = ext.lower().lstrip('.')
+                
+                if ext in extensions:
+                    result_files[ext] = file_path
+                    self.logger.info(f"找到分子文件: {ext} => {file_path}")
+        
+        return result_files
+
+    def generate_molecule_from_smile(self, smile, molecule_name, output_dir):
+        """从SMILE字符串生成分子文件
+        
+        Args:
+            smile: 分子的SMILE字符串
+            molecule_name: 分子名称
+            output_dir: 输出目录路径
+            
+        Returns:
+            bool: 成功返回True，失败返回False
+        """
+        self.logger.info(f"从SMILE生成分子文件: {molecule_name}, SMILE: {smile}")
+        
+        # 创建分子信息字典
+        molecule_info = {
+            'name': molecule_name,
+            'smile': smile
+        }
+        
+        # 调用LigParGen处理函数
+        result_files = self._generate_molecule_files_with_ligpargen(molecule_info, output_dir)
+        
+        # 检查是否成功生成文件
+        if result_files and len(result_files) > 0:
+            self.logger.info(f"成功从SMILE生成分子文件: {molecule_name}, 文件: {result_files}")
+            return True
+        else:
+            self.logger.error(f"从SMILE生成分子文件失败: {molecule_name}")
+            return False
 
     def _copy_existing_molecule_files(self, molecule_name, src_dir, dest_dir):
         """从初始目录复制现有分子文件
@@ -1423,7 +1450,7 @@ class MolyteWorkflow:
         return result_files
 
     def _generate_molecule_files_with_ligpargen(self, molecule_info, molecule_dir):
-        """使用LigParGen生成溶剂分子文件
+        """使用LigParGen生成溶剂分子文件，并使用resp2生成电荷
         
         Args:
             molecule_info: 分子信息字典，包含name和smile
@@ -1433,7 +1460,7 @@ class MolyteWorkflow:
             Dict: 包含生成文件路径的字典，如果失败则返回空字典
         """
         # 打印版本标识，帮助验证使用了哪个版本的代码
-        self.logger.info("=== 使用修改后的LigParGen处理函数版本3.0 ===")
+        self.logger.info("=== 使用修改后的LigParGen处理函数 ===")
         
         molecule_name = molecule_info.get('name', '')
         molecule_smile = molecule_info.get('smile', '')
@@ -1442,63 +1469,10 @@ class MolyteWorkflow:
             self.logger.warning(f"分子名称或SMILE字符串为空，无法使用LigParGen生成: {molecule_name}")
             return {}
         
-        # 首先通过SMILE字符串检查分子库中是否已有该分子
-        if hasattr(self, 'use_molecule_library') and self.use_molecule_library and self.molecule_library:
-            existing_name = self.molecule_library.find_by_smile(molecule_smile)
-            if existing_name:
-                self.logger.info(f"在分子库中找到匹配SMILE字符串的分子: {existing_name}，使用该分子代替 {molecule_name}")
-                
-                # 创建分子子目录
-                sanitized_name = molecule_name.replace('+', '').replace('-', '')
-                molecule_subdir = os.path.join(molecule_dir, sanitized_name)
-                os.makedirs(molecule_subdir, exist_ok=True)
-                
-                # 从分子库获取文件
-                result_files = self.molecule_library.get_molecule(existing_name, molecule_subdir, use_symlink=True)
-                
-                if result_files:
-                    self.logger.info(f"从分子库成功获取匹配的分子 {existing_name} 文件: {result_files}")
-                    
-                    # 重命名文件以匹配当前分子名称
-                    renamed_files = {}
-                    for ext, file_path in result_files.items():
-                        new_file_path = os.path.join(molecule_subdir, f"{sanitized_name}.{ext}")
-                        if os.path.exists(new_file_path):
-                            os.remove(new_file_path)
-                        
-                        # 复制而不是重命名，以保持原始文件不变
-                        shutil.copy2(file_path, new_file_path)
-                        renamed_files[ext] = new_file_path
-                        self.logger.info(f"重命名文件: {file_path} -> {new_file_path}")
-                    
-                    return renamed_files
-        
-        self.logger.info(f"使用LigParGen生成溶剂分子 {molecule_name}")
-        
         # 创建分子子目录
         sanitized_name = molecule_name.replace('+', '').replace('-', '')
         molecule_subdir = os.path.join(molecule_dir, sanitized_name)
         os.makedirs(molecule_subdir, exist_ok=True)
-        
-        # 尝试从已有溶剂目录复制
-        initial_solvent_dir = self.initial_solvent_path
-        if os.path.exists(initial_solvent_dir):
-            src_files = self._copy_existing_molecule_files(molecule_name, initial_solvent_dir, molecule_dir)
-            if src_files:
-                self.logger.info(f"从初始溶剂目录成功复制 {molecule_name} 的文件")
-                
-                # 将成功生成的文件添加到分子库
-                if hasattr(self, 'use_molecule_library') and self.use_molecule_library and self.molecule_library:
-                    self.molecule_library.add_molecule(molecule_name, src_files, "solvents", molecule_smile)
-                    self.logger.info(f"已将溶剂 {molecule_name} 添加到分子库，SMILE: {molecule_smile}")
-                
-                return src_files
-            
-        # 使用ligpargen路径
-        ligpargen_path = self.ligpargen_path
-        if not ligpargen_path or not os.path.exists(ligpargen_path):
-            self.logger.error(f"LigParGen路径不存在: {ligpargen_path}")
-            return {}
         
         try:
             # 切换到输出目录
@@ -1511,7 +1485,7 @@ class MolyteWorkflow:
             lt_file = os.path.join(molecule_subdir, f"{sanitized_name}.lt")
             
             # 构建LigParGen命令
-            cmd_str = f"{ligpargen_path} -s '{molecule_smile}' -n {sanitized_name} -r MOL -c 0 -o 0 -cgen CM1A"
+            cmd_str = f"{self.ligpargen_path} -s '{molecule_smile}' -n {sanitized_name} -r MOL -c 0 -o 0 -cgen CM1A"
             
             self.logger.info(f"执行LigParGen命令: {cmd_str}")
             
@@ -1532,143 +1506,89 @@ class MolyteWorkflow:
             
             # 列出当前目录的文件
             current_files = os.listdir(os.getcwd())
-            self.logger.info(f"当前目录文件列表 (修改版本2.0): {current_files}")
+            self.logger.info(f"当前目录文件列表: {current_files}")
             
-            # 检查所有可能的PDB文件名格式
-            self.logger.info("开始搜索PDB文件（优先查找.charmm.pdb）...")
-            
-            # 特定查找.charmm.pdb
-            charmm_pdb_file = os.path.join(os.getcwd(), f"{sanitized_name}.charmm.pdb")
-            self.logger.info(f"检查charmm.pdb文件: {charmm_pdb_file}")
-            
-            # 查找任何.pdb文件
-            all_pdb_files = [f for f in current_files if f.endswith('.pdb')]
-            self.logger.info(f"所有可能的PDB文件: {all_pdb_files}")
-            
-            # 优先使用.charmm.pdb
-            if os.path.exists(charmm_pdb_file):
-                self.logger.info(f"找到charmm.pdb文件: {charmm_pdb_file}")
-                # 复制到标准位置
-                shutil.copy2(charmm_pdb_file, pdb_file)
-                result_files['pdb'] = pdb_file
-                self.logger.info(f"已复制 {charmm_pdb_file} 到 {pdb_file}")
-            elif os.path.exists(pdb_file):
-                result_files['pdb'] = pdb_file
-                self.logger.info(f"已找到标准PDB文件: {pdb_file}")
-            elif all_pdb_files:
+            # 查找PDB文件
+            pdb_files = [f for f in current_files if f.endswith('.pdb')]
+            if pdb_files:
                 # 使用找到的第一个.pdb文件
-                first_pdb = os.path.join(os.getcwd(), all_pdb_files[0])
-                self.logger.info(f"使用发现的PDB文件: {first_pdb}")
-                shutil.copy2(first_pdb, pdb_file)
+                src_pdb = os.path.join(os.getcwd(), pdb_files[0])
+                self.logger.info(f"使用PDB文件: {src_pdb}")
+                shutil.copy2(src_pdb, pdb_file)
                 result_files['pdb'] = pdb_file
-                self.logger.info(f"已复制 {first_pdb} 到 {pdb_file}")
             else:
-                self.logger.warning(f"未找到任何PDB文件")
+                self.logger.error(f"未找到任何PDB文件")
+                return {}
             
-            # 检查所有可能的LMP文件名格式
-            self.logger.info("开始搜索LMP文件（优先查找.lammps.lmp）...")
-            
-            # 特定查找.lammps.lmp
-            lammps_lmp_file = os.path.join(os.getcwd(), f"{sanitized_name}.lammps.lmp")
-            self.logger.info(f"检查lammps.lmp文件: {lammps_lmp_file}")
-            
-            # 查找任何.lmp文件
-            all_lmp_files = [f for f in current_files if f.endswith('.lmp')]
-            self.logger.info(f"所有可能的LMP文件: {all_lmp_files}")
-            
-            # 优先使用.lammps.lmp
-            if os.path.exists(lammps_lmp_file):
-                self.logger.info(f"找到lammps.lmp文件: {lammps_lmp_file}")
-                # 复制到标准位置
-                shutil.copy2(lammps_lmp_file, lmp_file)
-                result_files['lmp'] = lmp_file
-                self.logger.info(f"已复制 {lammps_lmp_file} 到 {lmp_file}")
-            elif os.path.exists(lmp_file):
-                result_files['lmp'] = lmp_file
-                self.logger.info(f"已找到标准LMP文件: {lmp_file}")
-            elif all_lmp_files:
+            # 查找LMP文件
+            lmp_files = [f for f in current_files if f.endswith('.lmp')]
+            if lmp_files:
                 # 使用找到的第一个.lmp文件
-                first_lmp = os.path.join(os.getcwd(), all_lmp_files[0])
-                self.logger.info(f"使用发现的LMP文件: {first_lmp}")
-                shutil.copy2(first_lmp, lmp_file)
+                src_lmp = os.path.join(os.getcwd(), lmp_files[0])
+                self.logger.info(f"使用LMP文件: {src_lmp}")
+                shutil.copy2(src_lmp, lmp_file)
                 result_files['lmp'] = lmp_file
-                self.logger.info(f"已复制 {first_lmp} 到 {lmp_file}")
             else:
-                self.logger.warning(f"未找到任何LMP文件")
+                self.logger.error(f"未找到任何LMP文件")
+                return {}
             
-            # 检查是否需要生成电荷文件
-            if 'pdb' in result_files and self.use_resp_charges and self.resp_path:
-                charge_file = os.path.join(molecule_subdir, f"{sanitized_name}.chg")
-                # 如果还没有电荷文件，尝试使用RESP生成
-                if not os.path.exists(charge_file) and os.path.exists(self.resp_path):
-                    self.logger.info(f"尝试使用RESP2为分子{sanitized_name}生成电荷文件")
-                    try:
-                        # 调用RESP生成电荷
-                        self._generate_charges_with_resp(sanitized_name, result_files['pdb'], self.resp_path)
-                        
-                        # 检查是否生成了电荷文件
-                        resp_charge_file = os.path.join(self.resp_path, f"{sanitized_name}.charge")
-                        if os.path.exists(resp_charge_file):
-                            self.logger.info(f"RESP生成了电荷文件: {resp_charge_file}")
-                            # 复制并重命名为.chg文件
-                            shutil.copy2(resp_charge_file, charge_file)
-                            self.logger.info(f"已复制电荷文件: {resp_charge_file} -> {charge_file}")
-                            
-                            # 如果有LMP文件，更新其中的电荷
-                            if 'lmp' in result_files:
-                                try:
-                                    self.logger.info(f"使用RESP电荷更新LMP文件中的电荷")
-                                    replace_charges_in_lmp(result_files['lmp'], charge_file)
-                                    self.logger.info(f"成功更新LMP文件中的电荷")
-                                except Exception as e:
-                                    self.logger.error(f"更新LMP文件电荷时出错: {str(e)}")
-                    except Exception as e:
-                        self.logger.error(f"使用RESP生成电荷时出错: {str(e)}")
-            
-            # 检查或生成LT文件
-            if os.path.exists(lt_file):
-                result_files['lt'] = lt_file
-                self.logger.info(f"已找到LT文件: {lt_file}")
-            elif 'lmp' in result_files:
-                # 如果LMP文件存在但LT文件不存在，尝试从LMP生成LT
+            # 使用RESP2生成电荷
+            charge_file = os.path.join(molecule_subdir, f"{sanitized_name}.chg")
+            if os.path.exists(self.resp_path):
+                self.logger.info(f"使用RESP2为分子{sanitized_name}生成电荷文件")
                 try:
-                    self.logger.info(f"尝试从LMP文件生成LT文件")
-                    lt_file = self._generate_lt_from_lmp(result_files['lmp'], lt_file, sanitized_name)
-                    if os.path.exists(lt_file):
-                        result_files['lt'] = lt_file
-                        self.logger.info(f"成功从LMP生成LT文件: {lt_file}")
+                    # 调用RESP生成电荷
+                    self._generate_charges_with_resp(sanitized_name, result_files['pdb'], self.resp_path)
+                    
+                    # 检查是否生成了电荷文件
+                    resp_charge_file = os.path.join(self.resp_path, f"{sanitized_name}.chg")
+                    if os.path.exists(resp_charge_file):
+                        self.logger.info(f"RESP生成了电荷文件: {resp_charge_file}")
+                        # 复制并重命名为.chg文件
+                        shutil.copy2(resp_charge_file, charge_file)
+                        result_files['chg'] = charge_file
+                        
+                        # 更新LMP文件中的电荷
+                        if 'lmp' in result_files:
+                            try:
+                                self.logger.info(f"使用RESP电荷更新LMP文件中的电荷")
+                                replace_charges_in_lmp(result_files['lmp'], charge_file)
+                                self.logger.info(f"成功更新LMP文件中的电荷")
+                            except Exception as e:
+                                self.logger.error(f"更新LMP文件电荷时出错: {str(e)}")
+                except Exception as e:
+                    self.logger.error(f"使用RESP生成电荷时出错: {str(e)}")
+            
+            # 从LMP生成LT文件
+            if 'lmp' in result_files:
+                try:
+                    self.logger.info(f"从LMP文件生成LT文件")
+                    lt_file_path = self._generate_lt_from_lmp(result_files['lmp'], lt_file, sanitized_name)
+                    if os.path.exists(lt_file_path):
+                        result_files['lt'] = lt_file_path
+                        self.logger.info(f"成功从LMP生成LT文件: {lt_file_path}")
                 except Exception as e:
                     self.logger.error(f"从LMP生成LT文件失败: {e}")
             
-            # 总结找到的文件
-            self.logger.info(f"文件生成结果: PDB: {'是' if 'pdb' in result_files else '否'}, LMP: {'是' if 'lmp' in result_files else '否'}, LT: {'是' if 'lt' in result_files else '否'}")
+            # 返回到原始目录
+            os.chdir(original_dir)
+            
+            # 检查必要的文件是否生成
+            if 'pdb' not in result_files or 'lmp' not in result_files:
+                self.logger.error(f"缺少必要的文件: PDB或LMP")
+                return {}
             
             return result_files
-                
-        except subprocess.CalledProcessError as e:
-            self.logger.error(f"LigParGen执行失败: {e}")
-            if e.stderr:
-                self.logger.error(f"错误输出: {e.stderr}")
             
-            # 记录错误日志
-            error_log = os.path.join(molecule_dir, "ligpargen_error.log")
-            with open(error_log, 'w') as f:
-                f.write(f"Command: {cmd_str}\n")
-                f.write(f"Error: {str(e)}\n")
-                if e.stdout:
-                    f.write("\n--- STDOUT ---\n")
-                    f.write(e.stdout)
-                if e.stderr:
-                    f.write("\n--- STDERR ---\n")
-                    f.write(e.stderr)
-            
-            raise RuntimeError(f"LigParGen执行失败，详情查看: {error_log}")
         except Exception as e:
-            self.logger.error(f"使用LigParGen生成分子文件时出错: {e}")
+            # 返回到原始目录
+            if original_dir:
+                os.chdir(original_dir)
+            self.logger.error(f"使用LigParGen生成分子文件失败: {str(e)}")
             return {}
-            
+
     def _generate_lt_from_lmp(self, lmp_file, lt_file, molecule_name):
-        """使用ltemplify从LMP文件生成LT文件
+        """使用ltemplify从LMP文件生成LT文件，并确保LT文件中的电荷与CHG文件一致
         
         Args:
             lmp_file: LMP文件路径
@@ -1745,7 +1665,31 @@ class MolyteWorkflow:
                     error_msg = f"ltemplify生成的LT文件内容为空: {lt_file}"
                     self.logger.error(error_msg)
                     raise RuntimeError(error_msg)
-                    
+                
+                # 寻找相应的CHG文件，确保LT文件中的电荷与CHG文件一致
+                chg_file = None
+                
+                # 先检查同一目录下是否有对应的chg文件
+                possible_chg_file = os.path.join(os.path.dirname(lmp_file), f"{molecule_name}.chg")
+                if os.path.exists(possible_chg_file):
+                    chg_file = possible_chg_file
+                    self.logger.info(f"找到相应的电荷文件: {chg_file}")
+                
+                # 如果没找到，检查LMP文件目录的父目录
+                if not chg_file:
+                    parent_dir = os.path.dirname(os.path.dirname(lmp_file))
+                    possible_chg_file = os.path.join(parent_dir, f"{molecule_name}.chg")
+                    if os.path.exists(possible_chg_file):
+                        chg_file = possible_chg_file
+                        self.logger.info(f"在父目录找到相应的电荷文件: {chg_file}")
+                
+                # 如果找到了电荷文件，则更新LT文件中的电荷
+                if chg_file:
+                    self.logger.info(f"更新LT文件中的电荷，使用电荷文件: {chg_file}")
+                    self._update_charges_in_lt(lt_file, chg_file)
+                else:
+                    self.logger.warning(f"未找到相应的电荷文件，LT文件中的电荷可能不准确")
+                
                 self.logger.info(f"成功生成LT文件: {lt_file}")
                 return lt_file
             else:
@@ -1756,6 +1700,101 @@ class MolyteWorkflow:
         except Exception as e:
             self.logger.error(f"执行ltemplify时出错: {e}")
             raise
+
+    def _update_charges_in_lt(self, lt_file, chg_file):
+        """更新LT文件中的电荷信息，使其与CHG文件一致
+        
+        Args:
+            lt_file: LT文件路径
+            chg_file: 电荷文件路径
+        """
+        self.logger.info(f"更新LT文件中的电荷: {lt_file}, 使用电荷文件: {chg_file}")
+        
+        try:
+            # 读取CHG文件中的电荷
+            charges = []
+            with open(chg_file, 'r') as f:
+                for line in f:
+                    if line.strip():
+                        parts = line.strip().split()
+                        if len(parts) > 0:
+                            try:
+                                charge = float(parts[-1])
+                                charges.append(charge)
+                            except ValueError:
+                                pass
+            
+            if not charges:
+                self.logger.warning(f"从电荷文件未能读取到有效的电荷值: {chg_file}")
+                return
+                
+            self.logger.info(f"从电荷文件读取到 {len(charges)} 个电荷值")
+            
+            # 读取LT文件内容
+            with open(lt_file, 'r') as f:
+                lt_content = f.readlines()
+            
+            # 查找write("Data Atoms")部分，这是定义原子电荷的地方
+            atom_section_start = None
+            atom_section_end = None
+            
+            for i, line in enumerate(lt_content):
+                if 'write("Data Atoms")' in line:
+                    atom_section_start = i + 1
+                    break
+            
+            if atom_section_start is None:
+                self.logger.warning(f"在LT文件中未找到原子定义部分: {lt_file}")
+                return
+                
+            # 查找write("Data Atoms")部分的结束位置
+            for i in range(atom_section_start, len(lt_content)):
+                if 'write(' in line and 'write("Data Atoms")' not in line:
+                    atom_section_end = i
+                    break
+            
+            if atom_section_end is None:
+                atom_section_end = len(lt_content)
+            
+            self.logger.info(f"在LT文件中找到原子定义部分: 行 {atom_section_start} 到 {atom_section_end}")
+            
+            # 收集实际包含原子定义的行
+            atom_lines = []
+            for i in range(atom_section_start, atom_section_end):
+                line = lt_content[i]
+                if "$atom:" in line and "." in line:  # 原子定义行的特征
+                    atom_lines.append(i)
+            
+            if len(atom_lines) != len(charges):
+                self.logger.warning(f"原子数量({len(atom_lines)})与电荷值数量({len(charges)})不匹配")
+                # 如果不匹配，使用较小的数量
+                max_update = min(len(atom_lines), len(charges))
+                self.logger.info(f"将更新前 {max_update} 个原子的电荷")
+            else:
+                max_update = len(charges)
+            
+            # 更新原子电荷
+            for i in range(max_update):
+                line_idx = atom_lines[i]
+                line = lt_content[line_idx]
+                
+                # 分解原子定义行，格式通常是：
+                # $atom:id @atom:type $mol:molid x y z charge
+                parts = line.split()
+                if len(parts) >= 7:  # 确保行有足够的部分
+                    # 最后一部分是电荷
+                    parts[-1] = str(charges[i])
+                    lt_content[line_idx] = ' '.join(parts) + '\n'
+            
+            # 写回文件
+            with open(lt_file, 'w') as f:
+                f.writelines(lt_content)
+                
+            self.logger.info(f"成功更新LT文件中的电荷值: {lt_file}")
+            
+        except Exception as e:
+            self.logger.error(f"更新LT文件中的电荷时出错: {str(e)}")
+            # 记录错误但不抛出异常，使流程可以继续
 
     def _generate_lammps_input_with_moltemplate(self, system_lt_file, output_dir):
         """使用moltemplate生成LAMMPS输入文件
@@ -1847,7 +1886,7 @@ class MolyteWorkflow:
                         self.logger.error(f"无法找到缺失的文件: {missing}")
             
             # 保存当前工作目录
-            original_dir = os.getcwd()
+            original_dir = self.work_dir
             
             # 切换到输出目录
             os.chdir(output_dir)
@@ -1918,8 +1957,12 @@ class MolyteWorkflow:
             
         finally:
             # 恢复原始工作目录
-            if 'original_dir' in locals():
-                os.chdir(original_dir)
+            if "original_dir" in locals():
+                try:
+                    os.chdir(original_dir)
+                    self.logger.info(f"恢复原始目录: {original_dir}")
+                except Exception as e:
+                    self.logger.warning(f"恢复目录失败: {str(e)}")
                 self.logger.info(f"恢复原始目录: {original_dir}")
 
     def _generate_lammps_input_script(self, system_lt_file, output_dir):
@@ -1947,65 +1990,350 @@ class MolyteWorkflow:
         equilibration_steps = parameters.get('equilibration_steps', 10000)
         production_steps = parameters.get('production_steps', 100000)
         
-        # 设置输出频率
-        thermo_freq = 1000
-        trj_freq_npt = 2000
-        trj_freq_nvt = 10000
+        # 动态计算输出频率
+        # 目标是在每个阶段获取约100-200帧数据，并考虑到最小和最大输出频率限制
+
+        # 热力学数据输出（保存更多点，因为文件小）
+        thermo_freq = max(100, min(equilibration_steps // 200, 5000))
+
+        # NPT阶段轨迹输出（平衡阶段，适当采样）
+        trj_freq_npt = max(500, min(equilibration_steps // 100, 10000))
+
+        # NVT阶段轨迹输出（生产阶段，需要足够间隔但不能太稀疏）
+        trj_freq_nvt = max(1000, min(production_steps // 150, 20000))
+
+        # RDF输出频率
+        rdf_output_freq = max(1000, production_steps // 1000)
+
+        # 打印日志输出便于用户了解
+        self.logger.info(f"动态计算的输出频率 - thermo: {thermo_freq}, NPT轨迹: {trj_freq_npt}, NVT轨迹: {trj_freq_nvt}, RDF: {rdf_output_freq}")
         
         # 确定系统名称
         system_name = os.path.basename(system_lt_file).replace('.lt', '')
         
-        # 获取系统成分信息
-        cations = self.config.get('cations', [])
-        anions = self.config.get('anions', [])
-        solvents = self.config.get('solvents', [])
+        # 获取系统成分信息 - 从formulation_data获取而不是config
+        cations = self.formulation_data.get('cations', [])
+        anions = self.formulation_data.get('anions', [])
+        solvents = self.formulation_data.get('solvents', [])
         
-        # 创建元素列表
-        # 这里需要根据实际情况调整，或者从LAMMPS数据文件中读取
-        elements = []
-        for cation in cations:
-            if cation.get('name') == 'Li':
-                elements.append('Li')
-        for anion in anions:
-            if anion.get('name') == 'PF6':
-                elements.append('P')
-                elements.extend(['F'] * 6)
-        for solvent in solvents:
-            if solvent.get('name') == 'EC':
-                # EC分子大致包含以下元素
-                elements.extend(['C'] * 3)
-                elements.extend(['O'] * 2)
-                elements.extend(['H'] * 4)
+        # 记录系统成分
+        self.logger.info(f"电解液成分 - 阳离子: {len(cations)}个, 阴离子: {len(anions)}个, 溶剂: {len(solvents)}个")
+        if cations:
+            cation_details = ', '.join([c.get('name', 'Unknown') + '(' + str(c.get('number', 0)) + ')' for c in cations])
+            self.logger.info(f"阳离子详情: {cation_details}")
+        if anions:
+            anion_details = ', '.join([a.get('name', 'Unknown') + '(' + str(a.get('number', 0)) + ')' for a in anions])
+            self.logger.info(f"阴离子详情: {anion_details}")
+            
+        # 从数据文件中读取元素信息
+        data_file_path = os.path.join(output_dir, f"{system_name}.data")
+        lmpListModifyArr = []
+        
+        # 定义元素类型函数
+        def elementType(element):
+            """根据原子质量或注释信息推断元素符号"""
+            # 常见元素的原子质量（取整）映射
+            mass_map = {
+                1: 'H', 4: 'He', 7: 'Li', 9: 'Be', 11: 'B', 12: 'C', 14: 'N', 16: 'O', 19: 'F', 20: 'Ne',
+                23: 'Na', 24: 'Mg', 27: 'Al', 28: 'Si', 31: 'P', 32: 'S', 35: 'Cl', 39: 'K', 40: 'Ca',
+                45: 'Sc', 48: 'Ti', 51: 'V', 52: 'Cr', 55: 'Mn', 56: 'Fe', 59: 'Co', 58: 'Ni', 63: 'Cu', 
+                65: 'Zn', 70: 'Ga', 73: 'Ge', 75: 'As', 79: 'Br', 85: 'Rb', 88: 'Sr', 89: 'Y', 91: 'Zr',
+                93: 'Nb', 98: 'Mo', 101: 'Ru', 103: 'Rh', 106: 'Pd', 108: 'Ag', 112: 'Cd', 115: 'In',
+                119: 'Sn', 122: 'Sb', 127: 'I', 133: 'Cs', 137: 'Ba', 139: 'La'
+            }
+            # 尝试从质量映射中查找
+            return mass_map.get(element, f"Unknown({element})")
+        
+        # 读取数据文件，提取元素类型
+        atom_type_info = {}  # 存储原子类型、元素和所属分子的映射
+        solvent_molecules = []  # 所有溶剂分子列表
+        
+        try:
+            # 先从配方数据获取溶剂分子列表，确保使用前端提交的分子类型
+            if self.formulation_data and 'solvents' in self.formulation_data:
+                for solvent in self.formulation_data.get('solvents', []):
+                    if 'name' in solvent:
+                        solvent_name = solvent['name'].replace('+', '').replace('-', '')
+                        if solvent_name not in solvent_molecules:
+                            solvent_molecules.append(solvent_name)
                 
-        element_list = " ".join(elements) if elements else "Li P F F F F F F C C C O O H H H H"
+                self.logger.info(f"从formulation_data获取溶剂分子列表: {solvent_molecules}")
+            
+            # 首先从system.in.list_salt文件获取离子信息
+            list_salt_path = os.path.join(output_dir, "system.in.list_salt")
+            if os.path.exists(list_salt_path):
+                self.logger.info(f"解析离子文件: {list_salt_path}")
+                
+                # 使用正则表达式匹配行
+                group_pattern = re.compile(r'group\s+(\w+)\s+type\s+(.*)')
+                variable_pattern = re.compile(r'variable\s+(\w+)_list\s+index\s+"([^"]*)"')
+                
+                # 存储离子类型和元素
+                group_types = {}  # {分子名: [类型列表]}
+                group_elements = {}  # {分子名: [元素列表]}
+                
+                with open(list_salt_path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith('#'):
+                            continue
+                        
+                        # 匹配离子组
+                        group_match = group_pattern.match(line)
+                        if group_match:
+                            molecule_name = group_match.group(1)
+                            type_str = group_match.group(2)
+                            type_list = [int(t) for t in type_str.split()]
+                            group_types[molecule_name] = type_list
+                            self.logger.info(f"找到离子组 {molecule_name}: 原子类型 {type_list}")
+                            continue
+                        
+                        # 匹配元素列表
+                        variable_match = variable_pattern.match(line)
+                        if variable_match:
+                            mol_name = variable_match.group(1)
+                            elements = variable_match.group(2).split()
+                            group_elements[mol_name] = elements
+                            self.logger.info(f"找到元素列表 {mol_name}: {elements}")
+                            continue
+                
+                # 将原子类型与元素对应
+                for mol_name, types in group_types.items():
+                    elements = group_elements.get(mol_name, [])
+                    
+                    for i, atom_type in enumerate(types):
+                        # 确定元素，如果元素不够，循环使用
+                        element = elements[i % len(elements)] if elements else "Unknown"
+                        
+                        # 添加到映射
+                        atom_type_info[atom_type] = {
+                            'element': element,
+                            'molecule': mol_name
+                        }
+                        self.logger.info(f"映射离子: 类型 {atom_type} -> 元素 {element} 在分子 {mol_name}")
+            
+            # 然后从system.data文件读取所有原子类型
+            with open(data_file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                
+                # 查找Masses段落
+                masses_match = re.search(r'Masses\s*\n\s*\n(.*?)(?=\n\s*\n\w+|\Z)', content, re.DOTALL)
+                if masses_match:
+                    masses_section = masses_match.group(1)
+                    self.logger.info(f"找到Masses段落，长度: {len(masses_section)} 字符")
+                    
+                    # 解析每一行
+                    type1_positions = []  # 记录type1出现的位置
+                    
+                    for line in masses_section.strip().split('\n'):
+                        line = line.strip()
+                        if not line:
+                            continue
+                            
+                        # 分离数据和注释
+                        parts = line.split('#', 1)
+                        if len(parts) < 2:
+                            continue
+                            
+                        data = parts[0].strip()
+                        comment = parts[1].strip()
+                        
+                        # 解析数据部分
+                        items = data.split()
+                        if len(items) < 2:
+                            continue
+                            
+                        atom_type = int(items[0])
+                        mass = float(items[1])
+                        atomic_mass = round(mass)
+                        
+                        # 确定元素:
+                        # 1. 首先检查是否已经在离子映射中
+                        if atom_type in atom_type_info:
+                            element = atom_type_info[atom_type]['element']
+                        # 2. 否则，检查注释中是否有元素名称 (非typeX格式)
+                        elif not comment.startswith('type'):
+                            # 注释第一个单词可能是元素符号
+                            element = comment.split()[0]
+                        # 3. 最后，尝试从质量推断
+                        else:
+                            element = elementType(atomic_mass)
+                        
+                        # 记录原子类型和元素
+                        if atom_type not in atom_type_info:
+                            atom_type_info[atom_type] = {
+                                'mass': mass,
+                                'element': element,
+                                'comment': comment,
+                                'molecule': None  # 溶剂分子将在后续步骤中分配
+                            }
+                        
+                        # 检测type1标记 (用于识别溶剂开始位置)
+                        if 'type1' in comment and atom_type > 9:  # 排除离子类型
+                            type1_positions.append(atom_type)
+                            self.logger.info(f"在原子类型 {atom_type} 处检测到溶剂标记 (type1)")
+                    
+                    # 识别溶剂 - 如果从formulation_data没有获取到溶剂信息，则从文件检测
+                    if not solvent_molecules:
+                        self.logger.info("未从formulation_data获取到溶剂信息，尝试从文件检测")
+                        for solvent in ['EC', 'PC', 'DMC', 'EMC', 'DEC', 'ACN', 'DMSO']:
+                            if os.path.exists(os.path.join(output_dir, f"{solvent}.lt")):
+                                solvent_molecules.append(solvent)
+                        
+                        self.logger.info(f"从文件检测到的溶剂分子: {solvent_molecules}")
+                    
+                    # 根据type1标记分配溶剂类型
+                    if type1_positions and solvent_molecules:
+                        self.logger.info(f"找到 {len(type1_positions)} 个type1标记: {type1_positions}")
+                        
+                        # 处理溶剂映射
+                        if len(solvent_molecules) > 0:
+                            current_solvent_index = 0
+                            current_solvent = solvent_molecules[current_solvent_index]
+                            molecule_types = {current_solvent: []}
+                            
+                            # 查找连续的typeX标记，作为一个溶剂分子
+                            in_solvent = False
+                            curr_type_num = 0
+                            prev_type_num = 0
+                            
+                            # 排序原子类型，确保按顺序处理
+                            sorted_types = sorted(atom_type_info.keys())
+                            for atom_type in sorted_types:
+                                info = atom_type_info[atom_type]
+                                if 'comment' not in info:
+                                    continue
+                                    
+                                comment = info['comment']
+                                
+                                # 检查是否是离子类型，已经有分子归属的跳过
+                                if info.get('molecule') and info.get('molecule') in group_types.keys():
+                                    continue
+                                
+                                # 检查是否包含typeX标记
+                                type_match = re.search(r'type(\d+)', comment)
+                                if type_match:
+                                    curr_type_num = int(type_match.group(1))
+                                    
+                                    # 检测新溶剂的开始 (type1)
+                                    if curr_type_num == 1 and not in_solvent:
+                                        in_solvent = True
+                                        if current_solvent_index < len(solvent_molecules):
+                                            current_solvent = solvent_molecules[current_solvent_index]
+                                            molecule_types[current_solvent] = []
+                                        else:
+                                            # 如果溶剂已经用完，使用Unknown
+                                            current_solvent = f"Unknown_{current_solvent_index}"
+                                            molecule_types[current_solvent] = []
+                                    
+                                    # 检测溶剂分子的结束 (如果当前类型比前一个小，说明是新分子)
+                                    if curr_type_num < prev_type_num and curr_type_num == 1:
+                                        # 结束当前溶剂，开始新溶剂
+                                        current_solvent_index += 1
+                                        if current_solvent_index < len(solvent_molecules):
+                                            current_solvent = solvent_molecules[current_solvent_index]
+                                            molecule_types[current_solvent] = []
+                                        else:
+                                            # 如果溶剂已经用完，使用Unknown
+                                            current_solvent = f"Unknown_{current_solvent_index}"
+                                            molecule_types[current_solvent] = []
+                                    
+                                    # 将当前原子类型添加到当前溶剂
+                                    if in_solvent:
+                                        molecule_types[current_solvent].append(atom_type)
+                                        atom_type_info[atom_type]['molecule'] = current_solvent
+                                    
+                                    prev_type_num = curr_type_num
+                            
+                            # 输出溶剂分配情况
+                            self.logger.info("\n溶剂原子类型分配:")
+                            for solvent, types in molecule_types.items():
+                                self.logger.info(f"溶剂 {solvent}: {len(types)} 个原子类型 - {types}")
+        except Exception as e:
+            self.logger.error(f"读取数据文件失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # 如果读取失败，使用默认元素列表
+            atom_type_info = {}
+            for i, element in enumerate(["Li", "P", "F", "F", "F", "F", "F", "F", "C", "C", "C", "O", "O", "H", "H", "H", "H"], start=1):
+                atom_type_info[i] = {'element': element, 'molecule': 'Default'}
+            self.logger.warning(f"使用默认元素列表")
+        
+        # 准备element_list
+        lmpListModifyArr = []
+        for atom_type in sorted(atom_type_info.keys()):
+            element = atom_type_info[atom_type]['element']
+            lmpListModifyArr.append(element)
+        
+        # 生成元素列表文件
+        element_list = " ".join(lmpListModifyArr)
+        self.logger.info(f"元素列表: {element_list}")
+        
+        # 写入元素列表到.in.list文件
+        list_file_path = os.path.join(output_dir, f"{system_name}.in.list")
+        with open(list_file_path, 'w', encoding='utf-8') as f:
+            f.write(f"variable element_list index \"{element_list}\"\n")
         
         # 创建RDF对的信息
-        rdf_pairs = ""
-        rdf_titles = ""
+        findLiO = ''
+        fixRdf = ''
         
-        # Li-F RDF
-        if any(cat.get('name') == 'Li' for cat in cations) and any(an.get('name') == 'PF6' for an in anions):
-            rdf_pairs += "1 3 1 4 1 5 1 6 1 7 1 8 "
-            rdf_titles += "rdf_Li_F "
+        # 定义阳离子和阴离子元素
+        cation_elements = ['Li', 'Na', 'K', 'Mg', 'Ca', 'Zn', 'Al']
+        anion_elements = ['O', 'N', 'P', 'B', 'F', 'S', 'Cl']
         
-        # Li-O RDF
-        if any(cat.get('name') == 'Li' for cat in cations) and any(sol.get('name') == 'EC' for sol in solvents):
-            rdf_pairs += "1 11 1 12 "
-            rdf_titles += "rdf_Li_O "
+        self.logger.info(f"开始生成RDF对，溶剂分子列表: {solvent_molecules}")
+        self.logger.info(f"可用的原子类型信息: {len(atom_type_info)}个类型")
+        
+        # 输出原子类型信息摘要
+        atom_info_summary = []
+        for atom_type, info in sorted(atom_type_info.items())[:10]:  # 只显示前10个，避免日志过长
+            molecule = info.get('molecule', 'Unknown')
+            element = info.get('element', 'Unknown')
+            atom_info_summary.append(f"类型{atom_type}({element}@{molecule})")
+        
+        self.logger.info(f"原子类型信息示例: {', '.join(atom_info_summary)}...")
+        
+        # 遍历原子类型信息创建RDF对
+        for atom_type, info in sorted(atom_type_info.items()):
+            element = info['element']
+            molecule = info.get('molecule', 'Unknown')
             
-        # 生成LAMMPS输入文件内容
+            if element in cation_elements:
+                for anion_type, anion_info in sorted(atom_type_info.items()):
+                    anion_element = anion_info['element']
+                    anion_molecule = anion_info.get('molecule', 'Unknown')
+                    
+                    if anion_element in anion_elements:
+                        # 对于离子-离子对，使用 rdf_cation_anion 格式
+                        if molecule in group_types.keys() and anion_molecule in group_types.keys():
+                            findLiO += f'{atom_type} {anion_type} '
+                            rdf_label = f'rdf_{element}_{anion_element}_{anion_molecule}'
+                            cn_label = f'cn_{element}_{anion_element}_{anion_molecule}'
+                            fixRdf += f'{rdf_label} {cn_label} '
+                            self.logger.info(f"添加离子-离子RDF对: {rdf_label} (类型: {atom_type}-{anion_type})")
+                        # 对于离子-溶剂对，使用 rdf_cation_anion_solventname 格式
+                        elif molecule in group_types.keys() and anion_molecule not in group_types.keys() and anion_molecule in solvent_molecules:
+                            findLiO += f'{atom_type} {anion_type} '
+                            rdf_label = f'rdf_{element}_{anion_element}_{anion_molecule}'
+                            cn_label = f'cn_{element}_{anion_element}_{anion_molecule}'
+                            fixRdf += f'{rdf_label} {cn_label} '  
+                            self.logger.info(f"添加离子-溶剂RDF对: {rdf_label} (类型: {atom_type}-{anion_type}, 溶剂: {anion_molecule})")
+        
+        self.logger.info(f"RDF对生成完成，共 {len(findLiO.split()) // 2} 个对")
+        
+        # 创建LAMMPS输入文件内容
         in_file_content = f"""# LAMMPS输入脚本 - 生成于 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 # ----------------- Variable Section -----------------
 variable infile string {system_name}
 variable outname string {system_name}
-
 include {system_name}.in.init
 read_data {system_name}.data
 include {system_name}.in.settings
 
 # 元素列表
 variable element_list index "{element_list}"
-variable rdf_pair string "{rdf_pairs}"
+variable rdf_pair string "{findLiO}"
 
 # 模拟参数
 variable Nsteps_NPT equal {equilibration_steps}
@@ -2016,7 +2344,8 @@ variable thermo_freq equal {thermo_freq}
 variable timestep equal {time_step}
 variable Temp_NPT equal {temp}
 variable Temp_NVT equal {temp}
-
+variable rdf_output_freq equal {rdf_output_freq}
+variable pressure equal {pressure}
 # 创建分子组
 """
         
@@ -2082,7 +2411,7 @@ reset_timestep 0
         in_file_content += f"""
 # 计算径向分布函数RDF
 compute rdfc1 all rdf 100 ${{rdf_pair}}
-fix rdff1 all ave/time $(v_Nsteps_NVT/1000) 1000 ${{Nsteps_NVT}} c_rdfc1[*] file out_rdf.dat mode vector title3 "RDF {rdf_titles}"
+fix rdff1 all ave/time ${{rdf_output_freq}} 1000 ${{Nsteps_NVT}} c_rdfc1[*] file out_rdf.dat mode vector title3 "RDF {fixRdf}"
 
 # NVT生产阶段
 dump trj_nvt all custom ${{Freq_trj_nvt}} NVT_${{outname}}.lammpstrj id element mol type x y z q
@@ -2147,7 +2476,7 @@ write_dump all custom ${{infile}}_after_nvt.lammpstrj id element mol type x y z 
 #SBATCH --job-name={job_name}
 #SBATCH --output=out.dat
 #SBATCH --error=err.dat
-#SBATCH --partition=gpu  # 使用 cpu 队列
+#SBATCH --partition=cpu  # 使用 cpu 队列
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task={ncpus}  # 设置每个任务的CPU核心数
@@ -2155,7 +2484,8 @@ write_dump all custom ${{infile}}_after_nvt.lammpstrj id element mol type x y z 
 
 # 进入作业提交目录
 cd $SLURM_SUBMIT_DIR
-
+export PATH=/public/software/lammps/mpich_install/bin:$PATH
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/public/software/lammps/mpich_install/lib:/public/software/intel/oneapi/compiler/2024.0/lib
 EXEC=/public/software/lammps/mpich_install/bin/lmp_mpi
 mpirun -n {ncpus} $EXEC < {in_file_name} > {system_name}.log
 """
@@ -2322,6 +2652,29 @@ mpirun -n {ncpus} $EXEC < {in_file_name} > {system_name}.log
                     molecules_info.append(sol)
             
             self.logger.info(f"从formulation_data中重新构建了molecules_info，现在包含{len(molecules_info)}个分子")
+        
+        # 对molecules_info进行去重处理，避免同一分子被添加多次
+        deduplicated_molecules = {}
+        for molecule in molecules_info:
+            name = molecule.get("name", "")
+            if not name:
+                continue
+                
+            # 如果这个分子已经存在，合并数量
+            if name in deduplicated_molecules:
+                existing_count = deduplicated_molecules[name].get("number", deduplicated_molecules[name].get("count", 0))
+                new_count = molecule.get("number", molecule.get("count", 0))
+                
+                # 合并数量
+                deduplicated_molecules[name]["number"] = existing_count + new_count
+                self.logger.warning(f"检测到重复分子 {name}，合并数量: {existing_count} + {new_count} = {existing_count + new_count}")
+            else:
+                # 新分子
+                deduplicated_molecules[name] = molecule
+        
+        # 将字典转回列表
+        molecules_info = list(deduplicated_molecules.values())
+        self.logger.info(f"去重后的分子列表包含 {len(molecules_info)} 个分子")
         
         # 计算盒子尺寸 - 从formulation_data的parameters中获取，确保参数类型统一
         box_size = float(self.formulation_data.get('parameters', {}).get('box_size', 50.0))
@@ -2548,7 +2901,7 @@ mpirun -n {ncpus} $EXEC < {in_file_name} > {system_name}.log
         return system_lt_file
 
     def _generate_charges_with_resp(self, mol_name: str, pdb_file: str, resp_path: str) -> None:
-        """使用RESP2计算分子的电荷"""
+        """使用RESP2计算分子的电荷，在任务特定的临时目录中执行以避免多任务冲突"""
         
         # 硬编码检查常见已知离子
         known_ions = ["Li", "Na", "K", "PF6", "TFSI", "BF4", "FSI", "Li+", "Na+", "K+", "PF6-", "TFSI-", "BF4-", "FSI-"]
@@ -2574,53 +2927,62 @@ mpirun -n {ncpus} $EXEC < {in_file_name} > {system_name}.log
             if not os.path.exists(pdb_file):
                 self.logger.error(f"PDB文件不存在: {pdb_file}")
                 return
-                
-            # 确保RESP目录存在
-            if not os.path.exists(resp_path):
-                self.logger.error(f"RESP目录不存在: {resp_path}")
-                return
+            
+            # 创建任务特定的临时RESP目录
+            task_resp_dir = os.path.join(self.work_dir, "temp_resp", mol_name)
+            os.makedirs(task_resp_dir, exist_ok=True)
+            self.logger.info(f"创建任务特定的临时RESP目录: {task_resp_dir}")
             
             # 确保电荷保存目录存在
-            charge_save_dir = self.charge_save_path
-            if not charge_save_dir:
-                charge_save_dir = os.path.join(os.path.dirname(pdb_file), "charges")
+            charge_save_dir = self.initial_solvent_path
             os.makedirs(charge_save_dir, exist_ok=True)
             
-            # 复制PDB文件到RESP目录
-            dest_pdb = os.path.join(resp_path, f"{mol_name}.pdb")
+            # 复制PDB文件到临时RESP目录
+            dest_pdb = os.path.join(task_resp_dir, f"{mol_name}.pdb")
             shutil.copy2(pdb_file, dest_pdb)
-            self.logger.info(f"已复制PDB文件到RESP目录: {pdb_file} -> {dest_pdb}")
+            self.logger.info(f"已复制PDB文件到临时RESP目录: {pdb_file} -> {dest_pdb}")
             
-            # 运行RESP脚本
-            resp_script = os.path.join(resp_path, "RESP2.sh")
-            if os.path.exists(resp_script):
-                # 切换到RESP目录
-                original_dir = os.getcwd()
-                os.chdir(resp_path)
+            # 从全局RESP目录复制必要的脚本文件到临时目录
+            resp_script_source = os.path.join(resp_path, "RESP2.sh")
+            if not os.path.exists(resp_script_source):
+                self.logger.error(f"RESP2脚本不存在于全局目录: {resp_script_source}")
+                return
                 
-                # 先修改RESP2.sh文件，直接替换Gaussian变量为绝对路径
-                g16_path = "/public/software/g16/"
+            # 复制RESP2.sh和其他必要文件到临时目录
+            for script_file in ["RESP2.sh", "gen_esp_dat.py", "resp2.py"]:
+                src_file = os.path.join(resp_path, script_file)
+                if os.path.exists(src_file):
+                    dest_file = os.path.join(task_resp_dir, script_file)
+                    shutil.copy2(src_file, dest_file)
+                    self.logger.info(f"已复制RESP脚本文件: {src_file} -> {dest_file}")
+            
+            # 在临时目录中运行RESP脚本
+            resp_script = os.path.join(task_resp_dir, "RESP2.sh")
+            
+            # 切换到临时RESP目录
+            original_dir = os.getcwd()
+            os.chdir(task_resp_dir)
+            self.logger.info(f"切换到临时RESP目录: {task_resp_dir}")
+            
+            # 修改RESP2.sh文件，设置Gaussian绝对路径
+            g16_path = "/public/software/g16/"
+            
+            # 读取RESP2.sh内容
+            with open(resp_script, 'r') as f:
+                script_content = f.read()
+            
+            # 替换Gaussian路径
+            script_content = script_content.replace('Gaussian=g16', f'Gaussian="{g16_path}/g16"')
+            script_content = script_content.replace('Gaussian=g09', f'Gaussian="{g16_path}/g16"')
+            
+            # 写回修改后的内容
+            with open(resp_script, 'w') as f:
+                f.write(script_content)
+            
+            self.logger.info(f"已修改RESP2.sh，将Gaussian变量设置为绝对路径: {g16_path}")
                 
-                # 创建RESP2.sh的备份
-                resp_script_backup = os.path.join(resp_path, "RESP2.sh.bak")
-                shutil.copy2(resp_script, resp_script_backup)
-                
-                # 读取RESP2.sh内容
-                with open(resp_script, 'r') as f:
-                    script_content = f.read()
-                
-                # 替换Gaussian=g16行为绝对路径
-                script_content = script_content.replace('Gaussian=g16', f'Gaussian="{g16_path}"')
-                script_content = script_content.replace('Gaussian=g09', f'Gaussian="{g16_path}"')
-                
-                # 写回修改后的内容
-                with open(resp_script, 'w') as f:
-                    f.write(script_content)
-                
-                self.logger.info(f"已修改RESP2.sh，将Gaussian变量设置为绝对路径: {g16_path}")
-                
-                # 使用绝对路径运行命令
-                cmd = f"""
+            # 使用绝对路径运行命令
+            cmd = f"""
 export g16root=/public/software/g16
 export GAUSS_EXEDIR=/public/software/g16
 export PATH=$GAUSS_EXEDIR:$PATH
@@ -2628,43 +2990,60 @@ export Multiwfnpath=/public/home/xiaoji/software/Multiwfn_3.7_bin_Linux
 export PATH=$Multiwfnpath:$PATH
 bash RESP2.sh {mol_name}.pdb
 """
-                self.logger.info(f"执行RESP命令: {cmd}")
-                
-                process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-                stdout, stderr = process.communicate()
-                
+            self.logger.info(f"在临时目录中执行RESP命令: {cmd}")
+            
+            process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+            stdout, stderr = process.communicate()
+            
+            # 检查命令执行是否成功
+            if process.returncode != 0:
+                self.logger.error(f"RESP命令执行失败: {stderr}")
+                self.logger.debug(f"RESP stdout: {stdout}")
                 # 恢复原始目录
                 os.chdir(original_dir)
+                return
+            
+            self.logger.info(f"RESP命令执行成功")
+            
+            # 查找临时目录中生成的电荷文件
+            charge_file = os.path.join(task_resp_dir, f"{mol_name}.chg")
+            if os.path.exists(charge_file):
+                # 复制电荷文件到initial_solvent目录
+                dest_charge = os.path.join(charge_save_dir, f"{mol_name}.chg")
+                shutil.copy2(charge_file, dest_charge)
+                self.logger.info(f"已将电荷文件复制到initial_solvent目录: {charge_file} -> {dest_charge}")
                 
-                # 检查命令执行是否成功
-                if process.returncode != 0:
-                    self.logger.error(f"RESP命令执行失败: {stderr}")
-                    return  # 直接返回，不生成进一步的警告
-                
-                self.logger.info(f"RESP命令执行成功: {stdout}")
-                
-                # 恢复原始RESP2.sh
-                shutil.copy2(resp_script_backup, resp_script)
-                
-                # 检查是否生成了电荷文件 (.chg文件)
-                charge_file = os.path.join(resp_path, f"{mol_name}.chg")
-                if os.path.exists(charge_file):
-                    # 复制电荷文件到电荷保存目录
-                    dest_charge = os.path.join(charge_save_dir, f"{mol_name}.chg")
-                    shutil.copy2(charge_file, dest_charge)
-                    self.logger.info(f"已保存电荷文件: {dest_charge}")
-                    
-                    # 复制PDB文件到电荷保存目录
-                    dest_pdb_save = os.path.join(charge_save_dir, f"{mol_name}.pdb")
-                    shutil.copy2(pdb_file, dest_pdb_save)
-                    self.logger.info(f"已保存PDB文件: {dest_pdb_save}")
-                    
-                    # 立即更新exist_molecules.json
-                    self._update_exist_solvent_json(mol_name)
-                else:
-                    self.logger.warning(f"RESP未生成电荷文件: {charge_file}")
+                # 立即更新existing_molecules.json
+                self._update_exist_solvent_json(mol_name)
             else:
-                self.logger.error(f"找不到RESP脚本: {resp_script}")
+                self.logger.warning(f"RESP未生成电荷文件: {charge_file}")
+                # 搜索可能使用其他名称生成的电荷文件
+                chg_files = [f for f in os.listdir(task_resp_dir) if f.endswith('.chg')]
+                if chg_files:
+                    self.logger.info(f"找到其他电荷文件: {chg_files}")
+                    # 使用第一个找到的电荷文件
+                    first_chg = os.path.join(task_resp_dir, chg_files[0])
+                    dest_charge = os.path.join(charge_save_dir, f"{mol_name}.chg")
+                    shutil.copy2(first_chg, dest_charge)
+                    self.logger.info(f"已复制找到的电荷文件: {first_chg} -> {dest_charge}")
+            
+            # 恢复原始目录
+            os.chdir(original_dir)
+            self.logger.info(f"恢复原始工作目录: {original_dir}")
+            
+            # 清理临时目录中的大文件以节省空间，但保留关键文件以便调试
+            try:
+                for root, dirs, files in os.walk(task_resp_dir):
+                    for file in files:
+                        if file.endswith(('.fchk', '.chk', '.log')) and not file.startswith(mol_name):
+                            file_path = os.path.join(root, file)
+                            if os.path.getsize(file_path) > 10*1024*1024:  # 大于10MB
+                                os.remove(file_path)
+                                self.logger.info(f"删除大型临时文件: {file_path}")
+            except Exception as e:
+                self.logger.warning(f"清理临时文件时出错: {str(e)}")
+            
+            self.logger.info(f"RESP电荷计算完成: {mol_name}")
         
         except Exception as e:
             self.logger.error(f"生成RESP电荷时出错: {str(e)}")
@@ -2673,7 +3052,7 @@ bash RESP2.sh {mol_name}.pdb
             self.logger.error(f"详细错误信息: {traceback.format_exc()}")
 
     def _update_exist_solvent_json(self, mol_name: str) -> None:
-        """更新exist_solvent.json文件，添加新的溶剂信息
+        """更新existing_molecules.json文件，保存溶剂的SMILE表达式便于后续查找
         
         Args:
             mol_name: 分子名称
@@ -2681,7 +3060,7 @@ bash RESP2.sh {mol_name}.pdb
         try:
             # 获取分子的SMILE字符串
             smile = ""
-            for solvent in self.config.get("solvents", []):
+            for solvent in self.formulation_data.get("solvents", []):
                 if solvent.get("name") == mol_name:
                     smile = solvent.get("smile", "")
                     break
@@ -2690,8 +3069,8 @@ bash RESP2.sh {mol_name}.pdb
                 self.logger.warning(f"未找到分子 {mol_name} 的SMILE字符串")
                 return
             
-            # 读取现有的exist_solvent.json
-            existing_molecules_file = os.path.join(self.resp_path, "existing_molecules.json")
+            # 读取现有的existing_molecules.json
+            existing_molecules_file = os.path.join(self.initial_solvent_path, "existing_molecules.json")
             self.logger.info(f"使用existing_molecules.json文件路径: {existing_molecules_file}")
                 
             # 确保目录存在
@@ -2715,22 +3094,18 @@ bash RESP2.sh {mol_name}.pdb
                             "anion": {}
                         }
             
-            # 设置电荷文件路径(.chg而不是.charge)
-            charge_file_path = os.path.join(self.charge_save_path, f"{mol_name}.chg")
-            if not os.path.exists(charge_file_path):
-                # 检查RESP目录
-                resp_charge_path = os.path.join(self.resp_path, f"{mol_name}.chg")
-                if os.path.exists(resp_charge_path):
-                    charge_file_path = resp_charge_path
-                else:
-                    self.logger.warning(f"找不到 {mol_name} 的.chg电荷文件")
-                    charge_file_path = f"{mol_name}.chg"  # 使用相对路径
+            # 设置溶剂文件路径
+            pdb_file_path = os.path.join(self.initial_solvent_path, f"{mol_name}.pdb")
+            lt_file_path = os.path.join(self.initial_solvent_path, f"{mol_name}.lt")
+            chg_file_path = os.path.join(self.initial_solvent_path, f"{mol_name}.chg")
             
             # 更新数据 - 添加到溶剂部分
             existing_data["solvent"][mol_name] = {
                 "name": mol_name,
                 "smile": smile,
-                "charge_file": charge_file_path,
+                "pdb_file": pdb_file_path if os.path.exists(pdb_file_path) else "",
+                "lt_file": lt_file_path if os.path.exists(lt_file_path) else "",
+                "charge_file": chg_file_path if os.path.exists(chg_file_path) else "",
                 "last_updated": datetime.now().isoformat()
             }
             
@@ -2738,7 +3113,7 @@ bash RESP2.sh {mol_name}.pdb
             with open(existing_molecules_file, 'w') as f:
                 json.dump(existing_data, f, indent=2)
             
-            self.logger.info(f"已更新existing_molecules.json，添加溶剂分子: {mol_name}，电荷文件: {charge_file_path}")
+            self.logger.info(f"已更新existing_molecules.json，添加溶剂分子: {mol_name}，SMILE: {smile}")
             
         except Exception as e:
             self.logger.error(f"更新existing_molecules.json时出错: {e}")
@@ -2972,6 +3347,201 @@ bash RESP2.sh {mol_name}.pdb
             self.logger.error(traceback.format_exc())
             # 返回None而不是抛出异常，这样即使作业提交失败，工作流也能继续执行
             return None
+
+    def analyze_trajectory(self, trajectory_file=None, log_file=None):
+        """
+        分析模拟轨迹文件，计算物理性质，并保存结果
+        
+        Args:
+            trajectory_file: 轨迹文件路径，默认为None
+            log_file: 日志文件路径，默认为None
+        
+        Returns:
+            dict: 分析结果字典
+        """
+        try:
+            import os
+            import sys
+            import json
+            import subprocess
+            from pathlib import Path
+            
+            # 获取分析脚本的绝对路径
+            aisuan_root = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+            analysis_script = str(aisuan_root / "analyze_electrolyte_results.py")
+            
+            if not os.path.exists(analysis_script):
+                self.logger.error(f"分析脚本不存在: {analysis_script}")
+                return {"status": "failed", "error": f"分析脚本不存在: {analysis_script}"}
+            
+            # 确保脚本可执行
+            os.chmod(analysis_script, 0o755)
+            
+            # 准备分析参数
+            task_dir = os.path.dirname(self.output_dir) if self.output_dir else self.work_dir
+            output_dir = os.path.join(task_dir, "analysis")
+            
+            # 从配方数据中获取温度和浓度
+            temperature = 298.15  # 默认温度 (K)
+            concentration = 1.0   # 默认浓度 (mol/L)
+            
+            if hasattr(self, 'formulation_data') and self.formulation_data:
+                if 'parameters' in self.formulation_data:
+                    temperature = self.formulation_data['parameters'].get('temperature', temperature)
+                    
+                # 尝试从盐的摩尔浓度计算总浓度
+                if 'salts' in self.formulation_data:
+                    total_salt_concentration = 0
+                    for salt in self.formulation_data['salts']:
+                        if 'concentration' in salt:
+                            total_salt_concentration += salt['concentration']
+                    
+                    if total_salt_concentration > 0:
+                        concentration = total_salt_concentration
+            
+            self.logger.info(f"使用参数进行分析: 温度={temperature}K, 浓度={concentration}mol/L")
+            
+            # 构建命令
+            cmd = [
+                "python", analysis_script,
+                "--task_dir", task_dir,
+                "--output_dir", output_dir,
+                "--analysis_type", "all",
+                "--temperature", str(temperature),
+                "--concentration", str(concentration)
+            ]
+            
+            # 执行分析脚本
+            self.logger.info(f"执行分析命令: {' '.join(cmd)}")
+            process = subprocess.Popen(
+                cmd, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE,
+                universal_newlines=True
+            )
+            stdout, stderr = process.communicate()
+            
+            if process.returncode != 0:
+                self.logger.error(f"分析脚本执行失败: {stderr}")
+                return {"status": "failed", "error": stderr}
+            
+            self.logger.info(f"分析脚本执行成功")
+            self.logger.debug(f"分析脚本输出: {stdout}")
+            
+            # 读取分析结果
+            results = {"status": "success"}
+            
+            # 读取MSD分析结果
+            msd_results_file = os.path.join(output_dir, "msd", "msd_analysis_results.txt")
+            if os.path.exists(msd_results_file):
+                with open(msd_results_file, 'r') as f:
+                    msd_text = f.read()
+                    
+                    # 解析扩散系数
+                    diffusion_line = next((line for line in msd_text.split('\n') if '扩散系数' in line), None)
+                    if diffusion_line:
+                        try:
+                            diffusion_value = float(diffusion_line.split(':')[1].strip().split()[0])
+                            results["diffusion_coefficient"] = diffusion_value
+                        except:
+                            self.logger.warning("无法解析扩散系数")
+                    
+                    # 解析离子电导率
+                    conductivity_line = next((line for line in msd_text.split('\n') if '离子电导率' in line), None)
+                    if conductivity_line:
+                        try:
+                            conductivity_value = float(conductivity_line.split(':')[1].strip().split()[0])
+                            results["ionic_conductivity"] = conductivity_value
+                        except:
+                            self.logger.warning("无法解析离子电导率")
+            
+            # 获取图表路径
+            msd_plot = os.path.join(output_dir, "msd", "msd_plot.png")
+            rdf_plot = os.path.join(output_dir, "rdf", "rdf_plot.png")
+            
+            if os.path.exists(msd_plot):
+                results["plots"] = results.get("plots", []) + [{"name": "均方位移 (MSD)", "path": msd_plot}]
+            
+            if os.path.exists(rdf_plot):
+                results["plots"] = results.get("plots", []) + [{"name": "径向分布函数 (RDF)", "path": rdf_plot}]
+            
+            # 整合结果
+            results["results"] = {
+                "diffusion_coefficient": results.get("diffusion_coefficient"),
+                "ionic_conductivity": results.get("ionic_conductivity"),
+                "temperature": temperature,
+                "concentration": concentration,
+                "analysis_path": output_dir
+            }
+            
+            self.logger.info(f"分析结果: {json.dumps(results, indent=2)}")
+            return results
+        
+        except Exception as e:
+            self.logger.error(f"分析轨迹时出错: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            return {"status": "failed", "error": str(e)}
+
+    def check_calculation_completion(self):
+        """
+        检查LAMMPS计算是否完成，如果完成则自动运行分析
+        
+        Returns:
+            bool: 如果计算完成返回True，否则返回False
+        """
+        import os
+        import time
+        
+        if not hasattr(self, 'output_dir') or not self.output_dir:
+            self.logger.warning("没有设置输出目录，无法检查计算完成状态")
+            return False
+        
+        # 检查是否存在输出目录
+        if not os.path.exists(self.output_dir):
+            self.logger.debug(f"输出目录不存在: {self.output_dir}")
+            return False
+        
+        # 检查是否存在标准LAMMPS输出文件
+        log_file = os.path.join(self.output_dir, "log.lammps")
+        if not os.path.exists(log_file):
+            self.logger.debug(f"LAMMPS日志文件不存在: {log_file}")
+            return False
+        
+        # 检查轨迹文件
+        trajectory_file = os.path.join(self.output_dir, "NVT_system.lammpstrj")
+        if not os.path.exists(trajectory_file):
+            self.logger.debug(f"轨迹文件不存在: {trajectory_file}")
+            return False
+        
+        # 检查log文件中是否包含计算完成的标记
+        with open(log_file, 'r') as f:
+            log_content = f.read()
+            if "Total wall time:" not in log_content:
+                self.logger.debug("LAMMPS计算尚未完成")
+                return False
+        
+        self.logger.info("LAMMPS计算已完成")
+        
+        # 如果已经存在分析结果，不再重复分析
+        analysis_dir = os.path.join(os.path.dirname(self.output_dir), "analysis")
+        if os.path.exists(analysis_dir):
+            self.logger.info(f"分析目录已存在: {analysis_dir}，跳过自动分析")
+            return True
+        
+        # 自动运行分析
+        self.logger.info("开始自动分析轨迹数据")
+        analysis_result = self.analyze_trajectory(
+            trajectory_file=trajectory_file,
+            log_file=log_file
+        )
+        
+        if analysis_result.get("status") == "success":
+            self.logger.info("自动分析完成")
+        else:
+            self.logger.warning(f"自动分析失败: {analysis_result.get('error', '未知错误')}")
+        
+        return True
 
 # 提供便捷的函数用于从INP文件运行工作流
 def run_from_inp_file(inp_file_path: str, work_dir: str = None, output_dir: str = None, 
