@@ -2309,15 +2309,13 @@ class MolyteWorkflow:
                         if molecule in group_types.keys() and anion_molecule in group_types.keys():
                             findLiO += f'{atom_type} {anion_type} '
                             rdf_label = f'rdf_{element}_{anion_element}_{anion_molecule}'
-                            cn_label = f'cn_{element}_{anion_element}_{anion_molecule}'
-                            fixRdf += f'{rdf_label} {cn_label} '
+                            fixRdf += f'{rdf_label} '
                             self.logger.info(f"添加离子-离子RDF对: {rdf_label} (类型: {atom_type}-{anion_type})")
                         # 对于离子-溶剂对，使用 rdf_cation_anion_solventname 格式
                         elif molecule in group_types.keys() and anion_molecule not in group_types.keys() and anion_molecule in solvent_molecules:
                             findLiO += f'{atom_type} {anion_type} '
                             rdf_label = f'rdf_{element}_{anion_element}_{anion_molecule}'
-                            cn_label = f'cn_{element}_{anion_element}_{anion_molecule}'
-                            fixRdf += f'{rdf_label} {cn_label} '  
+                            fixRdf += f'{rdf_label} '  
                             self.logger.info(f"添加离子-溶剂RDF对: {rdf_label} (类型: {atom_type}-{anion_type}, 溶剂: {anion_molecule})")
         
         self.logger.info(f"RDF对生成完成，共 {len(findLiO.split()) // 2} 个对")
